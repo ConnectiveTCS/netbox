@@ -31,3 +31,11 @@ netbox.pid
 .coverage
 .vscode
 .python-version
+/.env
+/.dockerignore
+/.env.example
+/docker-compose.yml
+/Dockerfile
+/netbox/netbox/configuration_docker.py
+/docker/entrypoint.py
+/build.log

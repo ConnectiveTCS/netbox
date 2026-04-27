@@ -85,6 +85,21 @@ NetBox automatically logs the creation, modification, and deletion of all manage
 * The [official documentation](https://docs.netbox.dev) offers a comprehensive introduction.
 * Check out [our wiki](https://github.com/netbox-community/netbox/wiki/Community-Contributions) for even more projects to get the most out of NetBox!
 
+### Local Docker Compose Setup
+
+This repository now includes a local Docker setup for development and testing.
+
+1. Copy `.env.example` to `.env` and set a secure `SECRET_KEY` (must be at least 50 characters).
+2. Build and start services:
+
+  ```no-highlight
+  docker compose up --build
+  ```
+
+3. Open NetBox at `http://localhost:8080`.
+
+The compose stack starts four services: PostgreSQL, Redis, NetBox web, and a NetBox RQ worker.
+
 ## Get Involved
 
 * Follow [@NetBoxOfficial](https://twitter.com/NetBoxOfficial) on Twitter!
