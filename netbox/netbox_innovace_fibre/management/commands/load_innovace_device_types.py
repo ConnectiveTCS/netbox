@@ -3,9 +3,10 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+import types
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils.text import slugify
 
 from dcim.models import DeviceType, FrontPortTemplate, InterfaceTemplate, Manufacturer, PortTemplateMapping, RearPortTemplate
@@ -104,11 +105,29 @@ class Command(BaseCommand):
             )
         if not os.path.isdir(fv_root):
             raise CommandError(f'Fibre Visualizer root not found: {fv_root}')
+        app_root = os.path.join(fv_root, 'app')
+        if not os.path.isdir(app_root):
+            raise CommandError(f'Fibre Visualizer app directory not found: {app_root}')
 
         if fv_root not in sys.path:
             sys.path.insert(0, fv_root)
 
-        cassette_module = importlib.import_module('app.models.cassette')
+        # Bypass app/__init__.py (which imports Flask) by creating a lightweight package stub.
+        # This allows direct import of app.models.* from source files.
+        app_module = sys.modules.get('app')
+        injected_app_module = False
+        if app_module is None:
+            app_module = types.ModuleType('app')
+            app_module.__path__ = [app_root]
+            sys.modules['app'] = app_module
+            injected_app_module = True
+
+        try:
+            cassette_module = importlib.import_module('app.models.cassette')
+        finally:
+            if injected_app_module:
+                sys.modules.pop('app', None)
+
         registry = getattr(cassette_module, 'CASSETTE_TYPES', None)
         if not isinstance(registry, dict):
             raise CommandError('Unable to load CASSETTE_TYPES from app.models.cassette')
@@ -248,12 +267,32 @@ class Command(BaseCommand):
                     front = front_ports.get(front_name)
                     rear = rear_ports.get(rear_name)
                     if front and rear:
-                        PortTemplateMapping.objects.get_or_create(
-                            front_port=front,
+                        front_position = max(to_signal, 1)
+                        rear_position = max(from_signal, 1)
+
+                        # NetBox template mappings are 1:1 by rear/front position. Splitter-style
+                        # definitions can include 1:N fan-out, which is represented in SignalRouting
+                        # below. Skip conflicting template mappings to avoid uniqueness violations.
+                        if PortTemplateMapping.objects.filter(
                             rear_port=rear,
-                            front_port_position=max(to_signal, 1),
-                            rear_port_position=max(from_signal, 1),
-                        )
+                            rear_port_position=rear_position,
+                        ).exists():
+                            continue
+                        if PortTemplateMapping.objects.filter(
+                            front_port=front,
+                            front_port_position=front_position,
+                        ).exists():
+                            continue
+
+                        try:
+                            PortTemplateMapping.objects.create(
+                                front_port=front,
+                                rear_port=rear,
+                                front_port_position=front_position,
+                                rear_port_position=rear_position,
+                            )
+                        except IntegrityError:
+                            continue
 
         DeviceTypeSignalMeta.objects.update_or_create(
             device_type=device_type,

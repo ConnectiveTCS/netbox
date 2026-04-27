@@ -1,0 +1,393 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]:
+      - heading "NetBox Logo Community" [level=1] [ref=e5]:
+        - link "NetBox Logo Community" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - img "NetBox Logo" [ref=e7]
+          - generic [ref=e8]: Community
+      - text: 󰌵 󰛨 󰂚 󰀄 󰃀 󰂚 󰖷 󰌆 󰗽
+      - generic [ref=e9]:
+        - list [ref=e10]:
+          - text: 󰍉
+          - listitem [ref=e11]:
+            - button "󰇗 Organization 󰅀" [ref=e12] [cursor=pointer]:
+              - generic [ref=e14]: 󰇗
+              - generic [ref=e15]: Organization
+              - text: 󰅀
+          - listitem [ref=e16]:
+            - button "󱠞 Racks 󰅀" [ref=e17] [cursor=pointer]:
+              - generic [ref=e19]: 󱠞
+              - generic [ref=e20]: Racks
+              - text: 󰅀
+          - listitem [ref=e21]:
+            - button "󰒋 Devices 󰅀" [ref=e22] [cursor=pointer]:
+              - generic [ref=e24]: 󰒋
+              - generic [ref=e25]: Devices
+              - text: 󰅀
+          - listitem [ref=e26]:
+            - button "󱘖 Connections 󰅀" [ref=e27] [cursor=pointer]:
+              - generic [ref=e29]: 󱘖
+              - generic [ref=e30]: Connections
+              - text: 󰅀
+          - listitem [ref=e31]:
+            - button "󰖩 Wireless 󰅀" [ref=e32] [cursor=pointer]:
+              - generic [ref=e34]: 󰖩
+              - generic [ref=e35]: Wireless
+              - text: 󰅀
+          - listitem [ref=e36]:
+            - button "󰆙 IPAM 󰅀" [ref=e37] [cursor=pointer]:
+              - generic [ref=e39]: 󰆙
+              - generic [ref=e40]: IPAM
+              - text: 󰅀
+          - listitem [ref=e41]:
+            - button "󱁊 VPN 󰅀" [ref=e42] [cursor=pointer]:
+              - generic [ref=e44]: 󱁊
+              - generic [ref=e45]: VPN
+              - text: 󰅀
+          - listitem [ref=e46]:
+            - button "󰍹 Virtualization 󰅀" [ref=e47] [cursor=pointer]:
+              - generic [ref=e49]: 󰍹
+              - generic [ref=e50]: Virtualization
+              - text: 󰅀
+          - listitem [ref=e51]:
+            - button "󰴽 Circuits 󰅀" [ref=e52] [cursor=pointer]:
+              - generic [ref=e54]: 󰴽
+              - generic [ref=e55]: Circuits
+              - text: 󰅀
+          - listitem [ref=e56]:
+            - button "󰉁 Power 󰅀" [ref=e57] [cursor=pointer]:
+              - generic [ref=e59]: 󰉁
+              - generic [ref=e60]: Power
+              - text: 󰅀
+          - listitem [ref=e61]:
+            - button "󱔘 Provisioning 󰅀" [ref=e62] [cursor=pointer]:
+              - generic [ref=e64]: 󱔘
+              - generic [ref=e65]: Provisioning
+              - text: 󰅀
+          - listitem [ref=e66]:
+            - button "󰦭 Customization 󰅀" [ref=e67] [cursor=pointer]:
+              - generic [ref=e69]: 󰦭
+              - generic [ref=e70]: Customization
+              - text: 󰅀
+          - listitem [ref=e71]:
+            - button "󰣖 Operations 󰅀" [ref=e72] [cursor=pointer]:
+              - generic [ref=e74]: 󰣖
+              - generic [ref=e75]: Operations
+              - text: 󰅀
+          - listitem [ref=e76]:
+            - button "󰀎 Admin 󰅀" [ref=e77] [cursor=pointer]:
+              - generic [ref=e79]: 󰀎
+              - generic [ref=e80]: Admin
+              - text: 󰅀
+        - generic [ref=e81]:
+          - text: NetBox Community v4.5.8
+          - generic [ref=e82]:
+            - link "Get Cloud" [ref=e83] [cursor=pointer]:
+              - /url: https://netboxlabs.com/netbox-cloud/
+            - text: "|"
+            - link "Get Enterprise" [ref=e84] [cursor=pointer]:
+              - /url: https://netboxlabs.com/netbox-enterprise/
+  - banner [ref=e85]:
+    - generic [ref=e86]:
+      - generic [ref=e87]:
+        - generic [ref=e88]:
+          - button "Enable dark mode" [ref=e89] [cursor=pointer]:
+            - generic [ref=e90]: 󰌵
+          - text: 󰛨
+        - button "Notifications" [ref=e92] [cursor=pointer]:
+          - generic [ref=e94]: 󰂚
+        - generic [ref=e95]:
+          - link "Open user menu" [ref=e96] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e97]:
+              - generic [ref=e98]: admin
+              - generic [ref=e99]: Admin
+          - text: 󰀄 󰃀 󰂚 󰖷 󰌆 󰗽
+      - generic [ref=e102]:
+        - generic:
+          - generic: 󰍉
+        - textbox "Search NetBox" [ref=e103]:
+          - /placeholder: Search…
+  - generic [ref=e104]:
+    - generic [ref=e105]:
+      - generic [ref=e106]:
+        - generic [ref=e108]:
+          - heading "Add a new rack" [level=1] [ref=e110]
+          - link "󰋗 Help" [ref=e113] [cursor=pointer]:
+            - /url: /static/docs/models/dcim/rack/
+            - generic [ref=e114]: 󰋗
+            - text: Help
+        - tablist [ref=e117]:
+          - tab "Create" [selected] [ref=e118] [cursor=pointer]
+      - tabpanel [ref=e121]:
+        - generic [ref=e122]:
+          - generic [ref=e123]:
+            - generic [ref=e124]:
+              - heading "Rack" [level=2] [ref=e126]
+              - generic [ref=e127]:
+                - generic [ref=e129]: Site 󰛄
+                - generic [ref=e131]:
+                  - combobox [ref=e132]:
+                    - option "---------" [selected]
+                  - combobox "Site 󰛄" [ref=e135] [cursor=pointer]
+                  - button "󱘶" [ref=e136] [cursor=pointer]:
+                    - generic [ref=e137]: 󱘶
+              - generic [ref=e138]:
+                - generic [ref=e140]: Location
+                - generic [ref=e142]:
+                  - combobox [ref=e143]:
+                    - option "---------" [selected]
+                  - generic [ref=e145] [cursor=pointer]:
+                    - combobox "Location" [ref=e146]
+                    - generic "Clear All" [ref=e147]: 󰅙
+              - generic [ref=e148]:
+                - generic [ref=e150]: Name 󰛄
+                - textbox "Name 󰛄" [ref=e152]
+              - generic [ref=e153]:
+                - generic [ref=e155]: Status 󰛄
+                - generic [ref=e156]:
+                  - combobox [ref=e157]:
+                    - option "Reserved"
+                    - option "Available"
+                    - option "Planned"
+                    - option "Deprecated"
+                    - option "Active" [selected]
+                  - generic [ref=e159] [cursor=pointer]:
+                    - generic [ref=e160]: Active
+                    - combobox "Status 󰛄" [ref=e161]
+              - generic [ref=e162]:
+                - generic [ref=e164]: Role
+                - generic [ref=e166]:
+                  - combobox [ref=e167]:
+                    - option "---------" [selected]
+                  - generic [ref=e169] [cursor=pointer]:
+                    - combobox "Role" [ref=e170]
+                    - generic "Clear All" [ref=e171]: 󰅙
+              - generic [ref=e172]:
+                - generic [ref=e174]: Rack Type
+                - generic [ref=e175]:
+                  - generic [ref=e176]:
+                    - combobox [ref=e177]:
+                      - option "---------" [selected]
+                    - generic [ref=e179] [cursor=pointer]:
+                      - combobox "Rack Type" [ref=e180]
+                      - generic "Clear All" [ref=e181]: 󰅙
+                    - button "󱘶" [ref=e182] [cursor=pointer]:
+                      - generic [ref=e183]: 󱘶
+                  - text: Select a pre-defined rack type, or set physical characteristics below.
+              - generic [ref=e184]:
+                - generic [ref=e186]: Description
+                - textbox "Description" [ref=e188]
+              - generic [ref=e189]:
+                - generic [ref=e191]: Airflow
+                - generic [ref=e192]:
+                  - combobox [ref=e193]:
+                    - option "---------" [selected]
+                    - option "Front to rear"
+                    - option "Rear to front"
+                  - generic [ref=e195] [cursor=pointer]:
+                    - combobox "Airflow" [ref=e196]
+                    - generic "Clear All" [ref=e197]: 󰅙
+              - generic [ref=e198]:
+                - generic [ref=e200]: Tags
+                - generic [ref=e202]:
+                  - listbox [ref=e203]
+                  - generic [ref=e205]:
+                    - combobox "Tags" [ref=e206]
+                    - generic "Clear All" [ref=e207] [cursor=pointer]: 󰅙
+            - generic [ref=e208]:
+              - heading "Inventory Control" [level=2] [ref=e210]
+              - generic [ref=e211]:
+                - generic [ref=e213]: Facility ID
+                - generic [ref=e214]:
+                  - textbox "Facility ID" [ref=e215]
+                  - text: Locally-assigned identifier
+              - generic [ref=e216]:
+                - generic [ref=e218]: Serial number
+                - textbox "Serial number" [ref=e220]
+              - generic [ref=e221]:
+                - generic [ref=e223]: Asset tag
+                - generic [ref=e224]:
+                  - textbox "Asset tag" [ref=e225]
+                  - text: A unique tag used to identify this rack
+            - generic [ref=e226]:
+              - heading "Tenancy" [level=2] [ref=e228]
+              - generic [ref=e229]:
+                - generic [ref=e231]: Tenant group
+                - generic [ref=e233]:
+                  - combobox [ref=e234]:
+                    - option "None"
+                    - option "---------" [selected]
+                  - generic [ref=e236] [cursor=pointer]:
+                    - combobox "Tenant group" [ref=e237]
+                    - generic "Clear All" [ref=e238]: 󰅙
+              - generic [ref=e239]:
+                - generic [ref=e241]: Tenant
+                - generic [ref=e243]:
+                  - combobox [ref=e244]:
+                    - option "---------" [selected]
+                  - generic [ref=e246] [cursor=pointer]:
+                    - combobox "Tenant" [ref=e247]
+                    - generic "Clear All" [ref=e248]: 󰅙
+                  - button "󰐗" [ref=e249] [cursor=pointer]:
+                    - generic [ref=e250]: 󰐗
+            - generic [ref=e251]:
+              - heading "Dimensions" [level=2] [ref=e253]
+              - generic [ref=e254]:
+                - generic [ref=e256]: Form factor
+                - generic [ref=e257]:
+                  - combobox [ref=e258]:
+                    - option "---------" [selected]
+                    - option "2-post frame"
+                    - option "4-post frame"
+                    - option "4-post cabinet"
+                    - option "Wall-mounted frame"
+                    - option "Wall-mounted frame (vertical)"
+                    - option "Wall-mounted cabinet"
+                    - option "Wall-mounted cabinet (vertical)"
+                  - generic [ref=e260] [cursor=pointer]:
+                    - combobox "Form factor" [ref=e261]
+                    - generic "Clear All" [ref=e262]: 󰅙
+              - generic [ref=e263]:
+                - generic [ref=e265]: Width 󰛄
+                - generic [ref=e266]:
+                  - combobox [ref=e267]:
+                    - option "10 inches"
+                    - option "21 inches"
+                    - option "23 inches"
+                    - option "19 inches" [selected]
+                  - generic [ref=e269] [cursor=pointer]:
+                    - generic [ref=e270]: 19 inches
+                    - combobox "Width 󰛄" [ref=e271]
+                  - text: Rail-to-rail width
+              - generic [ref=e272]:
+                - generic [ref=e274]: Starting unit 󰛄
+                - generic [ref=e275]:
+                  - spinbutton "Starting unit 󰛄" [ref=e276]: "1"
+                  - text: Starting unit for rack
+              - generic [ref=e277]:
+                - generic [ref=e279]: Height (U) 󰛄
+                - generic [ref=e280]:
+                  - spinbutton "Height (U) 󰛄" [ref=e281]: "42"
+                  - text: Height in rack units
+              - generic [ref=e282]:
+                - generic [ref=e283]: Outer Dimensions
+                - generic [ref=e284]:
+                  - spinbutton [ref=e285]
+                  - generic [ref=e286]: Outer width
+                - generic [ref=e287]:
+                  - spinbutton [ref=e288]
+                  - generic [ref=e289]: Outer height
+                - generic [ref=e290]:
+                  - spinbutton [ref=e291]
+                  - generic [ref=e292]: Outer depth
+                - generic [ref=e293]:
+                  - combobox [ref=e294]:
+                    - option "---------" [selected]
+                    - option "Millimeters"
+                    - option "Inches"
+                  - generic [ref=e296] [cursor=pointer]:
+                    - combobox "---------" [ref=e297]
+                    - generic "Clear All" [ref=e298]: 󰅙
+                  - generic [ref=e299]: Outer unit
+              - generic [ref=e300]:
+                - generic [ref=e301]: Weight
+                - generic [ref=e302]:
+                  - spinbutton [ref=e303]
+                  - generic [ref=e304]: Weight
+                - generic [ref=e305]:
+                  - spinbutton [ref=e306]
+                  - generic [ref=e307]: Max weight
+                - generic [ref=e308]:
+                  - combobox [ref=e309]:
+                    - option "---------" [selected]
+                    - option "Kilograms"
+                    - option "Grams"
+                    - option "Pounds"
+                    - option "Ounces"
+                  - generic [ref=e311] [cursor=pointer]:
+                    - combobox "---------" [ref=e312]
+                    - generic "Clear All" [ref=e313]: 󰅙
+                  - generic [ref=e314]: Weight unit
+              - generic [ref=e315]:
+                - generic [ref=e317]: Mounting depth
+                - generic [ref=e318]:
+                  - spinbutton "Mounting depth" [ref=e319]
+                  - text: Maximum depth of a mounted device, in millimeters. For four-post racks, this is the distance between the front and rear rails.
+              - generic [ref=e322]:
+                - checkbox "Descending units" [ref=e323]
+                - generic [ref=e324]: Descending units
+                - text: Units are numbered top-to-bottom
+            - generic [ref=e325]:
+              - heading "Ownership" [level=2] [ref=e327]
+              - generic [ref=e328]:
+                - generic [ref=e330]: Owner group
+                - generic [ref=e332]:
+                  - combobox [ref=e333]:
+                    - option "None"
+                    - option "---------" [selected]
+                  - generic [ref=e335] [cursor=pointer]:
+                    - combobox "Owner group" [ref=e336]
+                    - generic "Clear All" [ref=e337]: 󰅙
+              - generic [ref=e338]:
+                - generic [ref=e340]: Owner
+                - generic [ref=e342]:
+                  - combobox [ref=e343]:
+                    - option "---------" [selected]
+                  - generic [ref=e345] [cursor=pointer]:
+                    - combobox "Owner" [ref=e346]
+                    - generic "Clear All" [ref=e347]: 󰅙
+            - generic [ref=e349]:
+              - generic [ref=e351]: Comments
+              - generic [ref=e352]:
+                - generic [ref=e353]:
+                  - tablist [ref=e354]:
+                    - tab "Write" [selected] [ref=e355] [cursor=pointer]
+                    - tab "Preview" [ref=e356] [cursor=pointer]
+                  - tabpanel "Write" [ref=e358]:
+                    - textbox "Comments" [ref=e359]
+                - generic [ref=e360]:
+                  - generic [ref=e361]: 󰋽
+                  - link "Markdown" [ref=e362] [cursor=pointer]:
+                    - /url: /static/docs/reference/markdown/
+                  - text: syntax is supported
+            - generic [ref=e364]:
+              - generic [ref=e366]: Changelog message
+              - textbox "Changelog message" [ref=e368]
+          - generic [ref=e369]:
+            - link "Cancel" [ref=e370] [cursor=pointer]:
+              - /url: /dcim/racks/
+            - group "Actions" [ref=e371]:
+              - button "Create" [ref=e372] [cursor=pointer]
+              - button "Create & Add Another" [ref=e373] [cursor=pointer]
+    - contentinfo [ref=e374]:
+      - generic [ref=e375]:
+        - list [ref=e376]:
+          - listitem [ref=e377]:
+            - link "Docs" [ref=e378] [cursor=pointer]:
+              - /url: /static/docs/
+              - generic "Docs" [ref=e379]: 󱓷
+          - listitem [ref=e380]:
+            - link "REST API" [ref=e381] [cursor=pointer]:
+              - /url: /api/
+              - generic "REST API" [ref=e382]: 󰞵
+          - listitem [ref=e383]:
+            - link "REST API documentation" [ref=e384] [cursor=pointer]:
+              - /url: /api/schema/swagger-ui/
+              - generic "REST API documentation" [ref=e385]: 󰂺
+          - listitem [ref=e386]:
+            - link "GraphQL API" [ref=e387] [cursor=pointer]:
+              - /url: /graphql/
+              - generic "GraphQL API" [ref=e388]: 󰡷
+          - listitem [ref=e389]:
+            - link "Source Code" [ref=e390] [cursor=pointer]:
+              - /url: https://github.com/netbox-community/netbox
+              - generic "Source Code" [ref=e391]: 󰊤
+          - listitem [ref=e392]:
+            - link "Community" [ref=e393] [cursor=pointer]:
+              - /url: https://netdev.chat
+              - generic "Community" [ref=e394]: 󰒱
+        - list [ref=e395]:
+          - listitem [ref=e396]: 2026-04-27 15:32:01 UTC
+          - listitem [ref=e397]: · f8d87080d784

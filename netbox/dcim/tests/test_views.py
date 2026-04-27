@@ -568,6 +568,20 @@ class RackTestCase(ViewTestCases.PrimaryObjectViewTestCase):
             'comments': 'New comments',
         }
 
+    @override_settings(EXEMPT_VIEW_PERMISSIONS=['*'], EXEMPT_EXCLUDE_MODELS=[])
+    def test_create_object_rejects_negative_weight(self):
+        initial_count = self._get_queryset().count()
+        form_data = {
+            **self.form_data,
+            'weight': -1,
+        }
+
+        response = self.client.post(self._get_url('add'), data=post_data(form_data))
+
+        self.assertHttpStatus(response, 200)
+        self.assertEqual(initial_count, self._get_queryset().count())
+        self.assertFormError(response, 'form', 'weight', 'Weight must be a positive number')
+
     @override_settings(EXEMPT_VIEW_PERMISSIONS=['*'])
     def test_list_rack_elevations(self):
         """

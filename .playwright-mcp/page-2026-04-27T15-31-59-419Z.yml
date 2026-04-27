@@ -1,0 +1,455 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - heading "NetBox Logo Community" [level=1] [ref=e5]:
+          - link "NetBox Logo Community" [ref=e6] [cursor=pointer]:
+            - /url: /
+            - img "NetBox Logo" [ref=e7]
+            - generic [ref=e8]: Community
+        - text: 󰌵 󰛨 󰂚 󰀄 󰃀 󰂚 󰖷 󰌆 󰗽
+        - generic [ref=e9]:
+          - list [ref=e10]:
+            - text: 󰍉
+            - listitem [ref=e11]:
+              - button "󰇗 Organization 󰅀" [ref=e12] [cursor=pointer]:
+                - generic [ref=e14]: 󰇗
+                - generic [ref=e15]: Organization
+                - text: 󰅀
+            - listitem [ref=e16]:
+              - button "󱠞 Racks 󰅀" [ref=e17] [cursor=pointer]:
+                - generic [ref=e19]: 󱠞
+                - generic [ref=e20]: Racks
+                - text: 󰅀
+            - listitem [ref=e21]:
+              - button "󰒋 Devices 󰅀" [ref=e22] [cursor=pointer]:
+                - generic [ref=e24]: 󰒋
+                - generic [ref=e25]: Devices
+                - text: 󰅀
+            - listitem [ref=e26]:
+              - button "󱘖 Connections 󰅀" [ref=e27] [cursor=pointer]:
+                - generic [ref=e29]: 󱘖
+                - generic [ref=e30]: Connections
+                - text: 󰅀
+            - listitem [ref=e31]:
+              - button "󰖩 Wireless 󰅀" [ref=e32] [cursor=pointer]:
+                - generic [ref=e34]: 󰖩
+                - generic [ref=e35]: Wireless
+                - text: 󰅀
+            - listitem [ref=e36]:
+              - button "󰆙 IPAM 󰅀" [ref=e37] [cursor=pointer]:
+                - generic [ref=e39]: 󰆙
+                - generic [ref=e40]: IPAM
+                - text: 󰅀
+            - listitem [ref=e41]:
+              - button "󱁊 VPN 󰅀" [ref=e42] [cursor=pointer]:
+                - generic [ref=e44]: 󱁊
+                - generic [ref=e45]: VPN
+                - text: 󰅀
+            - listitem [ref=e46]:
+              - button "󰍹 Virtualization 󰅀" [ref=e47] [cursor=pointer]:
+                - generic [ref=e49]: 󰍹
+                - generic [ref=e50]: Virtualization
+                - text: 󰅀
+            - listitem [ref=e51]:
+              - button "󰴽 Circuits 󰅀" [ref=e52] [cursor=pointer]:
+                - generic [ref=e54]: 󰴽
+                - generic [ref=e55]: Circuits
+                - text: 󰅀
+            - listitem [ref=e56]:
+              - button "󰉁 Power 󰅀" [ref=e57] [cursor=pointer]:
+                - generic [ref=e59]: 󰉁
+                - generic [ref=e60]: Power
+                - text: 󰅀
+            - listitem [ref=e61]:
+              - button "󱔘 Provisioning 󰅀" [ref=e62] [cursor=pointer]:
+                - generic [ref=e64]: 󱔘
+                - generic [ref=e65]: Provisioning
+                - text: 󰅀
+            - listitem [ref=e66]:
+              - button "󰦭 Customization 󰅀" [ref=e67] [cursor=pointer]:
+                - generic [ref=e69]: 󰦭
+                - generic [ref=e70]: Customization
+                - text: 󰅀
+            - listitem [ref=e71]:
+              - button "󰣖 Operations 󰅀" [ref=e72] [cursor=pointer]:
+                - generic [ref=e74]: 󰣖
+                - generic [ref=e75]: Operations
+                - text: 󰅀
+            - listitem [ref=e76]:
+              - button "󰀎 Admin 󰅀" [ref=e77] [cursor=pointer]:
+                - generic [ref=e79]: 󰀎
+                - generic [ref=e80]: Admin
+                - text: 󰅀
+          - generic [ref=e81]:
+            - text: NetBox Community v4.5.8
+            - generic [ref=e82]:
+              - link "Get Cloud" [ref=e83] [cursor=pointer]:
+                - /url: https://netboxlabs.com/netbox-cloud/
+              - text: "|"
+              - link "Get Enterprise" [ref=e84] [cursor=pointer]:
+                - /url: https://netboxlabs.com/netbox-enterprise/
+    - banner [ref=e85]:
+      - generic [ref=e86]:
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - button "Enable dark mode" [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]: 󰌵
+            - text: 󰛨
+          - button "Notifications" [ref=e92] [cursor=pointer]:
+            - generic [ref=e94]: 󰂚
+          - generic [ref=e95]:
+            - link "Open user menu" [ref=e96] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=e97]:
+                - generic [ref=e98]: admin
+                - generic [ref=e99]: Admin
+            - text: 󰀄 󰃀 󰂚 󰖷 󰌆 󰗽
+        - generic [ref=e102]:
+          - generic:
+            - generic: 󰍉
+          - textbox "Search NetBox" [ref=e103]:
+            - /placeholder: Search…
+    - generic [ref=e104]:
+      - generic [ref=e105]:
+        - generic [ref=e106]:
+          - generic [ref=e108]:
+            - generic [ref=e109]:
+              - link "Bookmarks widget configuration" [ref=e110] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e111]: 󰒓
+              - generic [ref=e112]: Bookmarks
+              - link "Close widget Bookmarks" [ref=e113] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e114]: 󰅖
+            - paragraph [ref=e116]:
+              - generic [ref=e117]: 󰋽
+              - text: No bookmarks have been added yet.
+          - generic [ref=e119]:
+            - generic [ref=e120]:
+              - link "Organization widget configuration" [ref=e121] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e122]: 󰒓
+              - generic [ref=e123]: Organization
+              - link "Close widget Organization" [ref=e124] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e125]: 󰅖
+            - generic [ref=e127]:
+              - link "Sites 1" [ref=e128] [cursor=pointer]:
+                - /url: /dcim/sites/
+                - generic [ref=e129]:
+                  - text: Sites
+                  - strong [ref=e130]: "1"
+              - link "Tenants 0" [ref=e131] [cursor=pointer]:
+                - /url: /tenancy/tenants/
+                - generic [ref=e132]:
+                  - text: Tenants
+                  - strong [ref=e133]: "0"
+              - link "Contacts 0" [ref=e134] [cursor=pointer]:
+                - /url: /tenancy/contacts/
+                - generic [ref=e135]:
+                  - text: Contacts
+                  - strong [ref=e136]: "0"
+          - generic [ref=e138]:
+            - generic [ref=e139]:
+              - link "IPAM widget configuration" [ref=e140] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e141]: 󰒓
+              - generic [ref=e142]: IPAM
+              - link "Close widget IPAM" [ref=e143] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e144]: 󰅖
+            - generic [ref=e146]:
+              - link "VRFs 0" [ref=e147] [cursor=pointer]:
+                - /url: /ipam/vrfs/
+                - generic [ref=e148]:
+                  - text: VRFs
+                  - strong [ref=e149]: "0"
+              - link "Aggregates 0" [ref=e150] [cursor=pointer]:
+                - /url: /ipam/aggregates/
+                - generic [ref=e151]:
+                  - text: Aggregates
+                  - strong [ref=e152]: "0"
+              - link "Prefixes 0" [ref=e153] [cursor=pointer]:
+                - /url: /ipam/prefixes/
+                - generic [ref=e154]:
+                  - text: Prefixes
+                  - strong [ref=e155]: "0"
+              - link "IP Ranges 0" [ref=e156] [cursor=pointer]:
+                - /url: /ipam/ip-ranges/
+                - generic [ref=e157]:
+                  - text: IP Ranges
+                  - strong [ref=e158]: "0"
+              - link "IP Addresses 0" [ref=e159] [cursor=pointer]:
+                - /url: /ipam/ip-addresses/
+                - generic [ref=e160]:
+                  - text: IP Addresses
+                  - strong [ref=e161]: "0"
+              - link "VLANs 0" [ref=e162] [cursor=pointer]:
+                - /url: /ipam/vlans/
+                - generic [ref=e163]:
+                  - text: VLANs
+                  - strong [ref=e164]: "0"
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - link "NetBox News widget configuration" [ref=e168] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e169]: 󰒓
+              - generic [ref=e170]: NetBox News
+              - link "Close widget NetBox News" [ref=e171] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e172]: 󰅖
+            - generic [ref=e174]:
+              - generic [ref=e175]:
+                - link "New Integrations Extend the NetBox Labs Platform Across the Full Infrastructure Stack" [ref=e176] [cursor=pointer]:
+                  - /url: https://netboxlabs.com/blog/new-integrations-extend-netbox-labs-platform-full-infrastructure-stack/
+                - generic [ref=e177]: Two new integrations, HPE Juniper Networking Mist and Lightyear, are generally available, and Infoblox NIOS and Cisco ACI open in customer preview. The post New Integrations Extend the NetBox Labs Platform Across the Full Infrastructure Stack appeared first on NetBox Labs.
+              - generic [ref=e178]:
+                - link "Why the NetBox Labs Platform Is the Foundation for OT Asset Inventory" [ref=e179] [cursor=pointer]:
+                  - /url: https://netboxlabs.com/blog/netbox-labs-platform-foundation-ot-asset-inventory/
+                - generic [ref=e180]: How the NetBox Labs platform gives utilities a trusted system of record for OT asset inventory, continuous reconciliation, and NOC automation at scale. The post Why the NetBox Labs Platform Is the Foundation for OT Asset Inventory appeared first on NetBox Labs.
+              - generic [ref=e181]:
+                - link "Why AI for Infrastructure Fails Without a Semantic Map" [ref=e182] [cursor=pointer]:
+                  - /url: https://netboxlabs.com/blog/ai-infrastructure-semantic-map/
+                - generic [ref=e183]: Most AI infrastructure initiatives stall in proof-of-concept. The missing ingredient isn't better models, it's semantic context that gives AI agents the understanding of infrastructure relationships they need to make informed decisions. The post Why AI for Infrastructure Fails Without a Semantic Map appeared first on NetBox Labs.
+              - generic [ref=e184]:
+                - 'link "Bulk Operations at Scale: Introducing NetBox TurboBulk" [ref=e185] [cursor=pointer]':
+                  - /url: https://netboxlabs.com/blog/bulk-operations-at-scale-introducing-netbox-turbobulk/
+                - generic [ref=e186]: "Customer preview now available for NetBox Cloud and NetBox Enterprise At NetBox Labs we work with the teams operating the largest and most automated infrastructure environments in the world. Hyperscale operators building massive AI datacenters at incredible speed. Enterprises managing tens of thousands of network devices across hundreds of sites. Teams where NetBox isn&#8217;t just [&#8230;] The post Bulk Operations at Scale: Introducing NetBox TurboBulk appeared first on NetBox Labs."
+              - generic [ref=e187]:
+                - link "Meet Chris Russell, the Engineer Who Fills the Gaps Others Miss" [ref=e188] [cursor=pointer]:
+                  - /url: https://netboxlabs.com/blog/meet-chris-russell-the-engineer-who-fills-the-gaps-others-miss/
+                - generic [ref=e189]: The post Meet Chris Russell, the Engineer Who Fills the Gaps Others Miss appeared first on NetBox Labs.
+              - generic [ref=e190]:
+                - link "NetBox Community Hits 20,000 GitHub Stars" [ref=e191] [cursor=pointer]:
+                  - /url: https://netboxlabs.com/blog/netbox-community-hits-20000-github-stars/
+                - generic [ref=e192]: Four years ago, we celebrated NetBox crossing 10,000 GitHub stars. That post closed with, “Now, on to 20,000 stars!” The netbox-community/netbox repo just crossed that mark. Later this summer, in June, NetBox will celebrate ten years of existence. When DigitalOcean released NetBox as open source in 2016, nobody was projecting 20,000 stars. The project found [&#8230;] The post NetBox Community Hits 20,000 GitHub Stars appeared first on NetBox Labs.
+              - generic [ref=e193]:
+                - 'link "See Your Infrastructure: Introducing NetBox Visual Explorer" [ref=e194] [cursor=pointer]':
+                  - /url: https://netboxlabs.com/blog/see-your-infrastructure-introducing-netbox-visual-explorer/
+                - generic [ref=e195]: "The post See Your Infrastructure: Introducing NetBox Visual Explorer appeared first on NetBox Labs."
+              - generic [ref=e196]:
+                - 'link "Teaching Copilot to Write: How NetBox Copilot Goes Beyond Read-Only" [ref=e197] [cursor=pointer]':
+                  - /url: https://netboxlabs.com/blog/teaching-copilot-to-write-how-netbox-copilot-goes-beyond-read-only/
+                - generic [ref=e198]: "The post Teaching Copilot to Write: How NetBox Copilot Goes Beyond Read-Only appeared first on NetBox Labs."
+              - generic [ref=e199]:
+                - link "The Long War Against Configuration Chaos" [ref=e200] [cursor=pointer]:
+                  - /url: https://netboxlabs.com/blog/the-long-war-against-configuration-chaos/
+                - generic [ref=e201]: The post The Long War Against Configuration Chaos appeared first on NetBox Labs.
+              - generic [ref=e202]:
+                - link "Understanding Cable Profiles in NetBox 4.5" [ref=e203] [cursor=pointer]:
+                  - /url: https://netboxlabs.com/blog/understanding-cable-profiles-in-netbox-4-5/
+                - generic [ref=e204]: "You can also filter cables by profile in both the UI list view and the API: The post Understanding Cable Profiles in NetBox 4.5 appeared first on NetBox Labs."
+          - generic [ref=e206]:
+            - generic [ref=e207]:
+              - link "Circuits widget configuration" [ref=e208] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e209]: 󰒓
+              - generic [ref=e210]: Circuits
+              - link "Close widget Circuits" [ref=e211] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e212]: 󰅖
+            - generic [ref=e214]:
+              - link "Providers 0" [ref=e215] [cursor=pointer]:
+                - /url: /circuits/providers/
+                - generic [ref=e216]:
+                  - text: Providers
+                  - strong [ref=e217]: "0"
+              - link "Circuits 0" [ref=e218] [cursor=pointer]:
+                - /url: /circuits/circuits/
+                - generic [ref=e219]:
+                  - text: Circuits
+                  - strong [ref=e220]: "0"
+              - link "Provider Networks 0" [ref=e221] [cursor=pointer]:
+                - /url: /circuits/provider-networks/
+                - generic [ref=e222]:
+                  - text: Provider Networks
+                  - strong [ref=e223]: "0"
+              - link "Provider Accounts 0" [ref=e224] [cursor=pointer]:
+                - /url: /circuits/provider-accounts/
+                - generic [ref=e225]:
+                  - text: Provider Accounts
+                  - strong [ref=e226]: "0"
+          - generic [ref=e228]:
+            - generic [ref=e229]:
+              - link "DCIM widget configuration" [ref=e230] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e231]: 󰒓
+              - generic [ref=e232]: DCIM
+              - link "Close widget DCIM" [ref=e233] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e234]: 󰅖
+            - generic [ref=e236]:
+              - link "Sites 1" [ref=e237] [cursor=pointer]:
+                - /url: /dcim/sites/
+                - generic [ref=e238]:
+                  - text: Sites
+                  - strong [ref=e239]: "1"
+              - link "Racks 0" [ref=e240] [cursor=pointer]:
+                - /url: /dcim/racks/
+                - generic [ref=e241]:
+                  - text: Racks
+                  - strong [ref=e242]: "0"
+              - link "Device Types 0" [ref=e243] [cursor=pointer]:
+                - /url: /dcim/device-types/
+                - generic [ref=e244]:
+                  - text: Device Types
+                  - strong [ref=e245]: "0"
+              - link "Devices 0" [ref=e246] [cursor=pointer]:
+                - /url: /dcim/devices/
+                - generic [ref=e247]:
+                  - text: Devices
+                  - strong [ref=e248]: "0"
+              - link "Cables 0" [ref=e249] [cursor=pointer]:
+                - /url: /dcim/cables/
+                - generic [ref=e250]:
+                  - text: Cables
+                  - strong [ref=e251]: "0"
+          - generic [ref=e253]:
+            - generic [ref=e254]:
+              - link "Virtualization widget configuration" [ref=e255] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e256]: 󰒓
+              - generic [ref=e257]: Virtualization
+              - link "Close widget Virtualization" [ref=e258] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e259]: 󰅖
+            - generic [ref=e261]:
+              - link "Clusters 0" [ref=e262] [cursor=pointer]:
+                - /url: /virtualization/clusters/
+                - generic [ref=e263]:
+                  - text: Clusters
+                  - strong [ref=e264]: "0"
+              - link "Virtual Machines 0" [ref=e265] [cursor=pointer]:
+                - /url: /virtualization/virtual-machines/
+                - generic [ref=e266]:
+                  - text: Virtual Machines
+                  - strong [ref=e267]: "0"
+          - generic [ref=e269]:
+            - generic [ref=e270]:
+              - link "Change Log widget configuration" [ref=e271] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e272]: 󰒓
+              - generic [ref=e273]: Change Log
+              - link "Close widget Change Log" [ref=e274] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=e275]: 󰅖
+            - generic [ref=e278]:
+              - table [ref=e279]:
+                - rowgroup [ref=e280]:
+                  - row "Time Username Action Type Object Message" [ref=e281]:
+                    - columnheader "Time" [ref=e282]:
+                      - link "Time" [ref=e283] [cursor=pointer]:
+                        - /url: "#"
+                    - columnheader "Username" [ref=e284]:
+                      - link "Username" [ref=e285] [cursor=pointer]:
+                        - /url: "#"
+                    - columnheader "Action" [ref=e286]:
+                      - link "Action" [ref=e287] [cursor=pointer]:
+                        - /url: "#"
+                    - columnheader "Type" [ref=e288]:
+                      - link "Type" [ref=e289] [cursor=pointer]:
+                        - /url: "#"
+                    - columnheader "Object" [ref=e290]
+                    - columnheader "Message" [ref=e291]:
+                      - link "Message" [ref=e292] [cursor=pointer]:
+                        - /url: "#"
+                    - columnheader [ref=e293]:
+                      - link:
+                        - /url: "#"
+                - rowgroup [ref=e294]:
+                  - row "2026-04-27 14:09 admin Created Rack Role Input/Output —" [ref=e295]:
+                    - cell "2026-04-27 14:09" [ref=e296]:
+                      - link "2026-04-27 14:09" [ref=e297] [cursor=pointer]:
+                        - /url: /core/changelog/4/
+                    - cell "admin" [ref=e298]
+                    - cell "Created" [ref=e299]:
+                      - generic [ref=e300]: Created
+                    - cell "Rack Role" [ref=e301]
+                    - cell "Input/Output" [ref=e302]:
+                      - link "Input/Output" [ref=e303] [cursor=pointer]:
+                        - /url: /dcim/rack-roles/2/
+                    - cell "—" [ref=e304]
+                    - cell [ref=e305]
+                  - row "2026-04-27 14:08 admin Created Rack Role Distribution —" [ref=e306]:
+                    - cell "2026-04-27 14:08" [ref=e307]:
+                      - link "2026-04-27 14:08" [ref=e308] [cursor=pointer]:
+                        - /url: /core/changelog/3/
+                    - cell "admin" [ref=e309]
+                    - cell "Created" [ref=e310]:
+                      - generic [ref=e311]: Created
+                    - cell "Rack Role" [ref=e312]
+                    - cell "Distribution" [ref=e313]:
+                      - link "Distribution" [ref=e314] [cursor=pointer]:
+                        - /url: /dcim/rack-roles/1/
+                    - cell "—" [ref=e315]
+                    - cell [ref=e316]
+                  - row "2026-04-27 14:07 admin Created Site Bright III —" [ref=e317]:
+                    - cell "2026-04-27 14:07" [ref=e318]:
+                      - link "2026-04-27 14:07" [ref=e319] [cursor=pointer]:
+                        - /url: /core/changelog/2/
+                    - cell "admin" [ref=e320]
+                    - cell "Created" [ref=e321]:
+                      - generic [ref=e322]: Created
+                    - cell "Site" [ref=e323]
+                    - cell "Bright III" [ref=e324]:
+                      - link "Bright III" [ref=e325] [cursor=pointer]:
+                        - /url: /dcim/sites/1/
+                    - cell "—" [ref=e326]
+                    - cell [ref=e327]
+                  - row "2026-04-27 14:06 admin Created Region Oman —" [ref=e328]:
+                    - cell "2026-04-27 14:06" [ref=e329]:
+                      - link "2026-04-27 14:06" [ref=e330] [cursor=pointer]:
+                        - /url: /core/changelog/1/
+                    - cell "admin" [ref=e331]
+                    - cell "Created" [ref=e332]:
+                      - generic [ref=e333]: Created
+                    - cell "Region" [ref=e334]
+                    - cell "Oman" [ref=e335]:
+                      - link "Oman" [ref=e336] [cursor=pointer]:
+                        - /url: /dcim/regions/1/
+                    - cell "—" [ref=e337]
+                    - cell [ref=e338]
+              - generic [ref=e339]:
+                - generic [ref=e340]: Showing 1-4 of 4
+                - navigation "Pagination options" [ref=e341]:
+                  - button "Per Page 󰅀" [ref=e343] [cursor=pointer]
+        - button "󰍀 Unlock Dashboard" [ref=e347] [cursor=pointer]:
+          - generic [ref=e348]: 󰍀
+          - text: Unlock Dashboard
+        - text: 󰍁 󰐕 󰠘 󰁮
+      - contentinfo [ref=e349]:
+        - generic [ref=e350]:
+          - list [ref=e351]:
+            - listitem [ref=e352]:
+              - link "Docs" [ref=e353] [cursor=pointer]:
+                - /url: /static/docs/
+                - generic "Docs" [ref=e354]: 󱓷
+            - listitem [ref=e355]:
+              - link "REST API" [ref=e356] [cursor=pointer]:
+                - /url: /api/
+                - generic "REST API" [ref=e357]: 󰞵
+            - listitem [ref=e358]:
+              - link "REST API documentation" [ref=e359] [cursor=pointer]:
+                - /url: /api/schema/swagger-ui/
+                - generic "REST API documentation" [ref=e360]: 󰂺
+            - listitem [ref=e361]:
+              - link "GraphQL API" [ref=e362] [cursor=pointer]:
+                - /url: /graphql/
+                - generic "GraphQL API" [ref=e363]: 󰡷
+            - listitem [ref=e364]:
+              - link "Source Code" [ref=e365] [cursor=pointer]:
+                - /url: https://github.com/netbox-community/netbox
+                - generic "Source Code" [ref=e366]: 󰊤
+            - listitem [ref=e367]:
+              - link "Community" [ref=e368] [cursor=pointer]:
+                - /url: https://netdev.chat
+                - generic "Community" [ref=e369]: 󰒱
+          - list [ref=e370]:
+            - listitem [ref=e371]: 2026-04-27 15:31:57 UTC
+            - listitem [ref=e372]: · f8d87080d784
+  - alert [ref=e373]:
+    - generic [ref=e374]:
+      - generic [ref=e375]: 󰗠
+      - button "Close" [ref=e376] [cursor=pointer]
+    - generic [ref=e377]: Logged in as admin.
