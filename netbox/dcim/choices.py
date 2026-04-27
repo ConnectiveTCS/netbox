@@ -1639,6 +1639,10 @@ class PortTypeChoices(ChoiceSet):
     TYPE_LC_APC = 'lc-apc'
     TYPE_MTRJ = 'mtrj'
     TYPE_MPO = 'mpo'
+    TYPE_CFP2 = 'cfp2'
+    TYPE_QSFP28 = 'qsfp28'
+    TYPE_SFP28 = 'sfp28'
+    TYPE_SFP_PLUS = 'sfp-plus'
     TYPE_LSH = 'lsh'
     TYPE_LSH_PC = 'lsh-pc'
     TYPE_LSH_UPC = 'lsh-upc'
@@ -1663,6 +1667,8 @@ class PortTypeChoices(ChoiceSet):
     TYPE_USB_MICRO_A = 'usb-micro-a'
     TYPE_USB_MICRO_B = 'usb-micro-b'
     TYPE_USB_MICRO_AB = 'usb-micro-ab'
+    TYPE_VGA = 'vga'
+    TYPE_COAX = 'coax'
     TYPE_OTHER = 'other'
 
     CHOICES = (
@@ -1709,6 +1715,10 @@ class PortTypeChoices(ChoiceSet):
                 (TYPE_LX5_UPC, 'LX.5/UPC'),
                 (TYPE_LX5_APC, 'LX.5/APC'),
                 (TYPE_MPO, 'MPO'),
+                (TYPE_CFP2, 'CFP2'),
+                (TYPE_QSFP28, 'QSFP28'),
+                (TYPE_SFP28, 'SFP28'),
+                (TYPE_SFP_PLUS, 'SFP+'),
                 (TYPE_MTRJ, 'MTRJ'),
                 (TYPE_SC, 'SC'),
                 (TYPE_SC_PC, 'SC/PC'),
@@ -1736,6 +1746,13 @@ class PortTypeChoices(ChoiceSet):
                 (TYPE_USB_MICRO_A, 'USB Micro A'),
                 (TYPE_USB_MICRO_B, 'USB Micro B'),
                 (TYPE_USB_MICRO_AB, 'USB Micro AB'),
+            ),
+        ),
+        (
+            _('Audio/Video'),
+            (
+                (TYPE_COAX, 'Coaxial'),
+                (TYPE_VGA, 'VGA'),
             ),
         ),
         (
