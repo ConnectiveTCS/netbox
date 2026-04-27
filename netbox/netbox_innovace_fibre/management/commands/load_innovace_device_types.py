@@ -97,6 +97,7 @@ class Command(BaseCommand):
         )
 
     def _load_fv_types(self, fv_root: str):
+        fv_root = (fv_root or '').strip().strip('"').strip("'")
         if not fv_root:
             raise CommandError(
                 'No Fibre Visualizer root provided. Set --fv-root or INNOVACE_FV_ROOT to import from source.'
