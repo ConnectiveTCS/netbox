@@ -1,4 +1,5 @@
 from django.contrib.contenttypes.models import ContentType
+from django.db.models import Q
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
@@ -39,29 +40,44 @@ class TopologyDataAPIView(APIView):
     """
     Returns graph data (nodes + edges) for the topology canvas.
 
+    All devices with front/rear ports are returned as nodes, regardless of
+    whether they have cables.  Edges are derived from existing cable records.
+
     Optional query params:
       ?site_id=<id>   — filter to devices in a specific site
       ?role_id=<id>   — filter to devices with a specific role
     """
 
     def get(self, request):
+        site_id = request.GET.get('site_id')
+        role_id = request.GET.get('role_id')
+
+        # All devices that have at least one front or rear port
+        devices_qs = (
+            Device.objects
+            .select_related('device_type__manufacturer', 'role', 'site')
+            .prefetch_related('frontports', 'rearports')
+            .filter(Q(frontports__isnull=False) | Q(rearports__isnull=False))
+            .distinct()
+        )
+        if site_id:
+            devices_qs = devices_qs.filter(site_id=site_id)
+        if role_id:
+            devices_qs = devices_qs.filter(role_id=role_id)
+
+        nodes = {dev.id: _serialise_device(dev) for dev in devices_qs}
+
+        # Build edges from cables between devices in our node set
         fp_ct = ContentType.objects.get_for_model(FrontPort)
         rp_ct = ContentType.objects.get_for_model(RearPort)
 
-        # All cable terminations on front/rear ports, with device context
         terminations = (
             CableTermination.objects
             .filter(termination_type__in=[fp_ct, rp_ct])
-            .select_related(
-                'cable',
-                'termination_type',
-            )
-            .prefetch_related('termination__device__device_type__manufacturer',
-                              'termination__device__role',
-                              'termination__device__site')
+            .select_related('cable')
+            .prefetch_related('termination__device')
         )
 
-        # Group terminations by cable → side
         cable_sides = {}
         for ct in terminations:
             cid = ct.cable_id
@@ -69,13 +85,7 @@ class TopologyDataAPIView(APIView):
                 cable_sides[cid] = {'cable': ct.cable, 'A': [], 'B': []}
             cable_sides[cid][ct.cable_end].append(ct)
 
-        # Site/role filters
-        site_id = request.GET.get('site_id')
-        role_id = request.GET.get('role_id')
-
-        nodes = {}
         edges = []
-
         for cid, sides in cable_sides.items():
             cable = sides['cable']
             for a_ct in sides.get('A', []):
@@ -86,19 +96,8 @@ class TopologyDataAPIView(APIView):
                     b_dev = getattr(b_port, 'device', None)
                     if not a_dev or not b_dev:
                         continue
-
-                    # Apply filters
-                    if site_id:
-                        if str(a_dev.site_id) != site_id and str(b_dev.site_id) != site_id:
-                            continue
-                    if role_id:
-                        if str(a_dev.role_id) != role_id and str(b_dev.role_id) != role_id:
-                            continue
-
-                    for dev in (a_dev, b_dev):
-                        if dev.id not in nodes:
-                            nodes[dev.id] = _serialise_device(dev)
-
+                    if a_dev.id not in nodes or b_dev.id not in nodes:
+                        continue
                     edges.append({
                         'id': cid,
                         'label': cable.label or '',
@@ -109,21 +108,23 @@ class TopologyDataAPIView(APIView):
                         'target_port': b_port.name,
                     })
 
-        # Build filter options for the UI
         all_sites = list(Site.objects.values('id', 'name').order_by('name'))
         all_roles = list(DeviceRole.objects.values('id', 'name').order_by('name'))
 
         return Response({
             'nodes': list(nodes.values()),
             'edges': edges,
-            'filters': {
-                'sites': all_sites,
-                'roles': all_roles,
-            },
+            'filters': {'sites': all_sites, 'roles': all_roles},
         })
 
 
 def _serialise_device(dev):
+    ports = []
+    for p in dev.frontports.all():
+        ports.append({'id': p.id, 'name': p.name, 'type': 'front', 'object_type': 'dcim.frontport'})
+    for p in dev.rearports.all():
+        ports.append({'id': p.id, 'name': p.name, 'type': 'rear', 'object_type': 'dcim.rearport'})
+    ports.sort(key=lambda p: p['name'])
     return {
         'id': dev.id,
         'label': dev.name or f'Device {dev.id}',
@@ -132,4 +133,5 @@ def _serialise_device(dev):
         'device_type': dev.device_type.model if dev.device_type_id else '',
         'site': dev.site.name if dev.site_id else '',
         'role': dev.role.name if dev.role_id else '',
+        'ports': ports,
     }

@@ -38,6 +38,8 @@ class DeviceNode {
     this.role     = data.role  || '';
     this.color    = hashColor(this.manufacturer || this.deviceType || String(this.id));
 
+    this.ports = data.ports || [];
+
     this.x = data.x ?? 0;
     this.y = data.y ?? 0;
     this.width  = 190;
@@ -492,32 +494,129 @@ function _drawHUD(ctx, w, h, scale, nodeCount, edgeCount) {
 
 // ── Page boot ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const canvas      = document.getElementById('topo-canvas');
-  const loading     = document.getElementById('topo-loading');
-  const emptyMsg    = document.getElementById('topo-empty');
-  const detail      = document.getElementById('topo-detail');
-  const detailTitle = document.getElementById('topo-detail-title');
-  const detailBody  = document.getElementById('topo-detail-body');
-  const filterSite  = document.getElementById('filter-site');
-  const filterRole  = document.getElementById('filter-role');
+  const canvas       = document.getElementById('topo-canvas');
+  const loading      = document.getElementById('topo-loading');
+  const emptyMsg     = document.getElementById('topo-empty');
+  const detail       = document.getElementById('topo-detail');
+  const detailTitle  = document.getElementById('topo-detail-title');
+  const detailBody   = document.getElementById('topo-detail-body');
+  const filterSite   = document.getElementById('filter-site');
+  const filterRole   = document.getElementById('filter-role');
+  const connectBar   = document.getElementById('topo-connect-bar');
+  const connectLabel = document.getElementById('topo-connect-label');
 
   const mgr = new CanvasManager(canvas);
 
-  mgr.onSelectNode = (node) => {
-    if (!node) {
+  // ── Connect mode ───────────────────────────────────────────────
+  const connectState = { active: false, fromNode: null, fromPort: null };
+
+  function enterConnectMode(node, port) {
+    connectState.active   = true;
+    connectState.fromNode = node;
+    connectState.fromPort = port;
+    connectLabel.textContent = `${node.label} › ${port.name}`;
+    connectBar.style.display = '';
+  }
+
+  function exitConnectMode() {
+    connectState.active   = false;
+    connectState.fromNode = null;
+    connectState.fromPort = null;
+    connectBar.style.display = 'none';
+  }
+
+  document.getElementById('btn-cancel-connect').addEventListener('click', () => {
+    exitConnectMode();
+    detail.classList.add('topo-detail-hidden');
+  });
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') exitConnectMode(); });
+
+  async function createCable(toPort) {
+    const body = {
+      a_terminations: [{ object_type: connectState.fromPort.object_type, object_id: connectState.fromPort.id }],
+      b_terminations: [{ object_type: toPort.object_type, object_id: toPort.id }],
+    };
+    try {
+      const res = await fetch('/api/dcim/cables/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        const msgs = Object.entries(err)
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+          .join('\n');
+        alert(`Could not create cable:\n${msgs}`);
+        return;
+      }
+      exitConnectMode();
       detail.classList.add('topo-detail-hidden');
-      return;
+      await loadTopology();
+    } catch (e) {
+      alert(`Error: ${e.message}`);
     }
+  }
+
+  // ── Detail panel ───────────────────────────────────────────────
+  function renderDetail(node) {
+    if (!node) { detail.classList.add('topo-detail-hidden'); return; }
+
     detailTitle.textContent = node.label;
-    detailBody.innerHTML = [
+
+    let html = [
       row('Manufacturer', node.manufacturer),
       row('Device type',  node.deviceType),
       row('Site',         node.site),
       row('Role',         node.role),
       `<div style="margin-top:8px"><a href="${node.url}" target="_blank">Open in NetBox ↗</a></div>`,
     ].join('');
+
+    const ports = node.ports || [];
+    if (ports.length > 0) {
+      const isSource = connectState.active && connectState.fromNode?.id === node.id;
+      const isTarget = connectState.active && connectState.fromNode?.id !== node.id;
+
+      html += `<div style="margin-top:12px;border-top:1px solid #1e2330;padding-top:10px">
+        <div style="font-size:11px;color:#5c6880;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">
+          Ports (${ports.length})
+        </div>`;
+
+      ports.forEach((port, i) => {
+        let btn = '';
+        if (isTarget) {
+          btn = `<button class="topo-port-btn select" data-idx="${i}">Select</button>`;
+        } else if (!isSource) {
+          btn = `<button class="topo-port-btn" data-idx="${i}">Connect</button>`;
+        }
+        html += `<div class="topo-port-row">
+          <span class="topo-port-name">${_esc(port.name)}</span>
+          <span class="topo-port-type">${port.type}</span>
+          ${btn}
+        </div>`;
+      });
+
+      html += '</div>';
+    }
+
+    detailBody.innerHTML = html;
     detail.classList.remove('topo-detail-hidden');
-  };
+
+    detailBody.querySelectorAll('.topo-port-btn:not(.select)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const port = node.ports[+btn.dataset.idx];
+        enterConnectMode(node, port);
+        renderDetail(node);
+      });
+    });
+
+    detailBody.querySelectorAll('.topo-port-btn.select').forEach(btn => {
+      btn.addEventListener('click', () => createCable(node.ports[+btn.dataset.idx]));
+    });
+  }
+
+  mgr.onSelectNode = renderDetail;
 
   function row(label, value) {
     if (!value) return '';
@@ -531,18 +630,16 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  // Close panel
   document.getElementById('btn-close-detail').addEventListener('click', () => {
     detail.classList.add('topo-detail-hidden');
   });
 
-  // Toolbar buttons
   document.getElementById('btn-zoom-in') .addEventListener('click', () => mgr.zoomBy(1.2));
   document.getElementById('btn-zoom-out').addEventListener('click', () => mgr.zoomBy(1 / 1.2));
   document.getElementById('btn-fit')     .addEventListener('click', () => mgr.fitView());
   document.getElementById('btn-reset-layout').addEventListener('click', () => mgr.resetLayout());
 
-  // Load data
+  // ── Load data ──────────────────────────────────────────────────
   async function loadTopology() {
     loading.style.display = '';
     emptyMsg.style.display = 'none';
@@ -551,12 +648,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (filterSite.value) params.set('site_id', filterSite.value);
     if (filterRole.value) params.set('role_id', filterRole.value);
 
-    const url = `/api/plugins/innovace-fibre/topology/?${params}`;
     try {
-      const res  = await fetch(url, { headers: { 'X-CSRFToken': _csrf() } });
+      const res  = await fetch(`/api/plugins/innovace-fibre/topology/?${params}`, {
+        headers: { 'X-CSRFToken': _csrf() },
+      });
       const data = await res.json();
 
-      // Populate filter dropdowns (first load only)
       if (!filterSite.dataset.populated) {
         for (const s of (data.filters?.sites || [])) {
           const o = document.createElement('option');
@@ -575,6 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loading.style.display = 'none';
       if (!data.nodes || data.nodes.length === 0) {
         emptyMsg.style.display = '';
+        emptyMsg.textContent = 'No devices with ports found. Add devices in NetBox and reload.';
         return;
       }
       mgr.load(data);

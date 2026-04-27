@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(docker compose *)",
-      "Bash(python -c \"from dcim.models import Device, FrontPort, RearPort, Cable; print\\('ok'\\)\")"
+      "Bash(python -c \"from dcim.models import Device, FrontPort, RearPort, Cable; print\\('ok'\\)\")",
+      "Bash(npx playwright *)",
+      "Read(//c/Program Files/BraveSoftware/Brave-Browser/Application/**)",
+      "Read(//c/Program Files \\(x86\\)/BraveSoftware/Brave-Browser/Application/**)",
+      "PowerShell(docker compose logs netbox --tail=50 2>&1)",
+      "PowerShell(Select-String -Pattern \"innovace|navigation|error|Error|traceback|Traceback\" -CaseSensitive:$false)"
     ]
   }
 }

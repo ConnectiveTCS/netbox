@@ -39,3 +39,4 @@ netbox.pid
 /netbox/netbox/configuration_docker.py
 /docker/entrypoint.py
 /build.log
+.playwright-mcp/console-2026-04-27T15-32-01-549Z.log
