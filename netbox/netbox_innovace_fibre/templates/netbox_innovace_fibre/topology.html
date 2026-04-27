@@ -3,7 +3,7 @@
 
 {% block title %}Fibre Topology{% endblock %}
 
-{% block content %}
+{% block page %}
 <div id="topology-root">
 
   {# ── Toolbar ───────────────────────────────────────────────── #}
@@ -62,24 +62,23 @@
   </div>
 
 </div>
-{% endblock content %}
+{% endblock page %}
 
 {% block javascript %}
 {{ block.super }}
 <script type="module" src="{% static 'netbox_innovace_fibre/js/topology.js' %}"></script>
 {% endblock %}
 
-{% block styles %}
+{% block head %}
 {{ block.super }}
 <style>
 /* ── Layout ────────────────────────────────────────── */
 #topology-root {
-  position: fixed;
-  inset: var(--nb-topbar-height, 56px) 0 0 0;
+  height: calc(100vh - 3.5rem);
   display: flex;
   flex-direction: column;
   background: #0A0C10;
-  z-index: 10;
+  overflow: hidden;
 }
 
 /* ── Toolbar ───────────────────────────────────────── */
@@ -237,7 +236,7 @@
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
   transition: opacity 0.2s, transform 0.2s;
-  z-index: 20;
+  z-index: 100;
 }
 
 .topo-detail-hidden {
@@ -293,4 +292,4 @@
 .topo-detail-label { color: #5c6880; min-width: 70px; }
 .topo-detail-value { color: #c9d1e0; }
 </style>
-{% endblock %}
+{% endblock head %}

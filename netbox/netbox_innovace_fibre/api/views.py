@@ -1,10 +1,10 @@
-from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
-from dcim.models import Cable, CableTermination, Device, DeviceRole, FrontPort, RearPort, Site
+from netbox.api.authentication import IsAuthenticatedOrLoginNotRequired
+
+from dcim.models import Cable, CableTermination, Device, DeviceRole, Site
 from netbox_innovace_fibre.models import DeviceTypeSignalMeta, SignalRouting
 from netbox_innovace_fibre.tracer import trace_signal_path
 
@@ -22,6 +22,8 @@ class SignalRoutingViewSet(ModelViewSet):
 
 
 class SignalTraceAPIView(APIView):
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
     def get(self, request, pk):
         from dcim.models import DeviceType
         device_type = DeviceType.objects.get(pk=pk)
@@ -40,25 +42,25 @@ class TopologyDataAPIView(APIView):
     """
     Returns graph data (nodes + edges) for the topology canvas.
 
-    All devices with front/rear ports are returned as nodes, regardless of
-    whether they have cables.  Edges are derived from existing cable records.
+    All devices are returned as nodes (filtered by site/role if requested).
+    Edges are derived from all cable records regardless of termination type
+    (Interface, FrontPort, RearPort, etc.).
 
     Optional query params:
       ?site_id=<id>   — filter to devices in a specific site
       ?role_id=<id>   — filter to devices with a specific role
     """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
 
     def get(self, request):
         site_id = request.GET.get('site_id')
         role_id = request.GET.get('role_id')
 
-        # All devices that have at least one front or rear port
+        # All devices, regardless of port type
         devices_qs = (
             Device.objects
             .select_related('device_type__manufacturer', 'role', 'site')
-            .prefetch_related('frontports', 'rearports')
-            .filter(Q(frontports__isnull=False) | Q(rearports__isnull=False))
-            .distinct()
+            .prefetch_related('interfaces', 'frontports', 'rearports')
         )
         if site_id:
             devices_qs = devices_qs.filter(site_id=site_id)
@@ -67,15 +69,11 @@ class TopologyDataAPIView(APIView):
 
         nodes = {dev.id: _serialise_device(dev) for dev in devices_qs}
 
-        # Build edges from cables between devices in our node set
-        fp_ct = ContentType.objects.get_for_model(FrontPort)
-        rp_ct = ContentType.objects.get_for_model(RearPort)
-
+        # All cable terminations regardless of port type (Interface, FrontPort, RearPort, …)
         terminations = (
             CableTermination.objects
-            .filter(termination_type__in=[fp_ct, rp_ct])
             .select_related('cable')
-            .prefetch_related('termination__device')
+            .prefetch_related('termination')
         )
 
         cable_sides = {}
@@ -120,6 +118,8 @@ class TopologyDataAPIView(APIView):
 
 def _serialise_device(dev):
     ports = []
+    for p in dev.interfaces.all():
+        ports.append({'id': p.id, 'name': p.name, 'type': 'iface', 'object_type': 'dcim.interface'})
     for p in dev.frontports.all():
         ports.append({'id': p.id, 'name': p.name, 'type': 'front', 'object_type': 'dcim.frontport'})
     for p in dev.rearports.all():
