@@ -13,7 +13,7 @@ from dcim.models import DeviceType, FrontPortTemplate, InterfaceTemplate, Manufa
 from netbox_innovace_fibre.models import DeviceTypeSignalMeta, SignalRouting
 
 
-DEFAULT_FV_ROOT = r"C:\Innovace Tools\Innovace_Fibre_Visualizer(usethis)\Innovace_Fibre_Visualizer"
+DEFAULT_FV_ROOT = os.getenv('INNOVACE_FV_ROOT', '')
 
 
 INTERFACE_TYPE_MAP = {
@@ -97,6 +97,10 @@ class Command(BaseCommand):
         )
 
     def _load_fv_types(self, fv_root: str):
+        if not fv_root:
+            raise CommandError(
+                'No Fibre Visualizer root provided. Set --fv-root or INNOVACE_FV_ROOT to import from source.'
+            )
         if not os.path.isdir(fv_root):
             raise CommandError(f'Fibre Visualizer root not found: {fv_root}')
 
