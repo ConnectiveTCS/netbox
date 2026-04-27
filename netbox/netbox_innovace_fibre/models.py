@@ -2,9 +2,12 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from dcim.models import DeviceType
+from utilities.querysets import RestrictedQuerySet
 
 
 class DeviceTypeSignalMeta(models.Model):
+    objects = RestrictedQuerySet.as_manager()
+
     CATEGORY_CASSETTE = 'cassette'
     CATEGORY_DEVICE = 'device'
     CATEGORY_SWITCH = 'switch'
@@ -52,6 +55,8 @@ class DeviceTypeSignalMeta(models.Model):
 
 
 class SignalRouting(models.Model):
+    objects = RestrictedQuerySet.as_manager()
+
     device_type = models.ForeignKey(
         to=DeviceType,
         on_delete=models.CASCADE,
