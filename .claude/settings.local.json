@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+      "Bash(python -c \"from dcim.models import Device, FrontPort, RearPort, Cable; print\\('ok'\\)\")"
     ]
   }
 }

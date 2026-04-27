@@ -7,6 +7,13 @@ from .models import SignalRouting
 from .tracer import trace_signal_path
 
 
+class TopologyView(View):
+    template_name = 'netbox_innovace_fibre/topology.html'
+
+    def get(self, request):
+        return render(request, self.template_name)
+
+
 class DeviceTypeSchematicView(View):
     template_name = 'netbox_innovace_fibre/schematic.html'
 
