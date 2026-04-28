@@ -90,22 +90,22 @@ class RackScene {
         this._scene.add(fill);
 
         this._controls = new OrbitControls(this._camera, this._renderer.domElement);
-        this._controls.enableDamping   = true;
-        this._controls.dampingFactor   = 0.12;   // snappier response
-        this._controls.minDistance     = 2;
-        this._controls.maxDistance     = 600;
+        this._controls.enableDamping = true;
+        this._controls.dampingFactor = 0.12;   // snappier response
+        this._controls.minDistance = 2;
+        this._controls.maxDistance = 600;
         // Left-drag = pan (matches floor-plan / CAD conventions)
         // Right-drag = orbit/spin
-        this._controls.mouseButtons    = {
-            LEFT:   THREE.MOUSE.ROTATE,
+        this._controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
             MIDDLE: THREE.MOUSE.DOLLY,
-            RIGHT:  THREE.MOUSE.PAN,
+            RIGHT: THREE.MOUSE.PAN,
         };
         // Pan follows the screen axes (mouse left ↔ view left, mouse up ↔ view up)
         this._controls.screenSpacePanning = true;
-        this._controls.panSpeed        = 2.0;    // 1:1 — viewport unit per pixel
-        this._controls.rotateSpeed     = 0.6;    // slightly slower for precision
-        this._controls.zoomSpeed       = 1.2;
+        this._controls.panSpeed = 2.0;    // 1:1 — viewport unit per pixel
+        this._controls.rotateSpeed = 0.6;    // slightly slower for precision
+        this._controls.zoomSpeed = 1.2;
 
         this._raycaster = new THREE.Raycaster();
         this._mouse = new THREE.Vector2();
