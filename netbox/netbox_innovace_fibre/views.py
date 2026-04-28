@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -7,6 +8,7 @@ from dcim.models import Device, DeviceType
 
 from .forms import DeviceSignalRoutingForm
 from .models import DeviceSignalRouting, SignalRouting
+from .tables import DeviceCustomMappingTable
 from .tracer import trace_signal_path, trace_signal_path_for_device
 
 
@@ -51,6 +53,18 @@ class SignalTraceView(View):
                 'signal': signal,
             },
         )
+
+
+class CustomMappingListView(View):
+    """Lists all devices with their signal routing override counts."""
+    template_name = 'netbox_innovace_fibre/custom_mapping_list.html'
+
+    def get(self, request):
+        devices = Device.objects.annotate(
+            override_count=Count('innovace_signal_routings')
+        ).select_related('site', 'rack', 'device_type').order_by('name')
+        table = DeviceCustomMappingTable(devices)
+        return render(request, self.template_name, {'table': table})
 
 
 class DeviceSignalRoutingView(View):
@@ -103,10 +117,20 @@ class DeviceSignalTraceView(View):
 
     def get(self, request, pk):
         device = get_object_or_404(Device, pk=pk)
-        port = request.GET.get('port')
+        port = request.GET.get('port') or None
         signal = int(request.GET.get('signal', '1'))
+
+        device_routes = list(DeviceSignalRouting.objects.filter(device=device))
+        has_overrides = bool(device_routes)
+        if has_overrides:
+            available_ports = sorted({r.from_port_name for r in device_routes})
+        else:
+            available_ports = sorted(set(
+                SignalRouting.objects.filter(device_type=device.device_type)
+                .values_list('from_port_name', flat=True)
+            ))
+
         paths = trace_signal_path_for_device(device=device, port_name=port, signal=signal)
-        has_overrides = DeviceSignalRouting.objects.filter(device=device).exists()
         return render(
             request,
             self.template_name,
@@ -116,5 +140,6 @@ class DeviceSignalTraceView(View):
                 'port': port,
                 'signal': signal,
                 'has_overrides': has_overrides,
+                'available_ports': available_ports,
             },
         )

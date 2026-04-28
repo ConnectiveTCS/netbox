@@ -27,6 +27,7 @@
       <button id="btn-zoom-out" class="topo-btn" title="Zoom out">−</button>
       <button id="btn-fit"      class="topo-btn" title="Fit view (double-click canvas)">⊡ Fit</button>
       <button id="btn-reset-layout" class="topo-btn" title="Reset node positions">↺ Reset</button>
+      <button id="btn-clear-trace"  class="topo-btn topo-btn-trace" title="Clear signal trace" style="display:none">✕ Trace</button>
     </div>
   </div>
 
@@ -59,6 +60,15 @@
       <button id="btn-close-detail" title="Close">✕</button>
     </div>
     <div id="topo-detail-body"></div>
+  </div>
+
+  {# ── Signal trace context menu ─────────────────────────────── #}
+  <div id="topo-ctx-menu">
+    <div id="topo-ctx-edge-label" class="ctx-edge-label"></div>
+    <button class="ctx-item" id="ctx-trace-ab"></button>
+    <button class="ctx-item" id="ctx-trace-ba"></button>
+    <div class="ctx-sep"></div>
+    <button class="ctx-item" id="ctx-clear-trace">✕ Clear Trace</button>
   </div>
 
 </div>
@@ -291,5 +301,57 @@
 .topo-detail-row { display: flex; gap: 6px; }
 .topo-detail-label { color: #5c6880; min-width: 70px; }
 .topo-detail-value { color: #c9d1e0; }
+
+/* ── Clear-trace toolbar button ─────────────────────── */
+.topo-btn-trace {
+  border-color: #7dd3fc44;
+  color: #7dd3fc;
+}
+.topo-btn-trace:hover { background: #0e2a3a; border-color: #7dd3fc; color: #bae6fd; }
+
+/* ── Signal trace context menu ──────────────────────── */
+#topo-ctx-menu {
+  position: fixed;
+  z-index: 500;
+  background: #12151c;
+  border: 1px solid #2a3045;
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.75);
+  padding: 4px;
+  min-width: 230px;
+  display: none;
+  pointer-events: auto;
+}
+
+.ctx-edge-label {
+  font-size: 10px;
+  font-family: monospace;
+  color: #5c6880;
+  padding: 4px 10px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #c9d1e0;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.ctx-item:hover { background: #1e2742; color: #fff; }
+
+.ctx-sep {
+  border: none;
+  border-top: 1px solid #1e2330;
+  margin: 3px 4px;
+}
 </style>
 {% endblock head %}

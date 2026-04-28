@@ -5,7 +5,28 @@
 <p>
     Device type: <a href="{{ device.device_type.get_absolute_url }}">{{ device.device_type }}</a>
 </p>
-<p>Origin port: <strong>{{ port|default:'(not specified)' }}</strong>, signal: <strong>{{ signal }}</strong></p>
+
+<form method="get" class="mb-4">
+    <div class="row g-2 align-items-end">
+        <div class="col-auto">
+            <label class="form-label mb-1">Port</label>
+            <select name="port" class="form-select form-select-sm">
+                <option value="">— select a port —</option>
+                {% for p in available_ports %}
+                <option value="{{ p }}" {% if p == port %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label mb-1">Signal</label>
+            <input type="number" name="signal" value="{{ signal }}" min="1"
+                class="form-control form-control-sm" style="width:80px;">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">Trace</button>
+        </div>
+    </div>
+</form>
 
 {% if has_overrides %}
 <div class="alert alert-info" role="alert">

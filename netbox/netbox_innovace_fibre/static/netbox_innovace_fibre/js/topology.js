@@ -1,10 +1,8 @@
 /**
  * Fibre Topology Canvas
  * Dark-theme, hardware-accelerated 2D canvas with pan/zoom/drag.
- * Mirrors the visual style of Innovace_Fibre_Visualizer.
  */
 
-// ── Colour palette (one per manufacturer/role bucket) ─────────────────────
 const PALETTE = [
   '#4A90D9', '#4A148C', '#1B5E20', '#E65100', '#880E4F',
   '#00695C', '#1565C0', '#6A1B9A', '#37474F', '#BF360C',
@@ -29,17 +27,15 @@ function hexToRgb(hex) {
 // ── Node ──────────────────────────────────────────────────────────────────
 class DeviceNode {
   constructor(data) {
-    this.id       = data.id;
-    this.label    = data.label || `Device ${data.id}`;
-    this.url      = data.url;
+    this.id           = data.id;
+    this.label        = data.label || `Device ${data.id}`;
+    this.url          = data.url;
     this.manufacturer = data.manufacturer || '';
     this.deviceType   = data.device_type  || '';
-    this.site     = data.site  || '';
-    this.role     = data.role  || '';
-    this.color    = hashColor(this.manufacturer || this.deviceType || String(this.id));
-
-    this.ports = data.ports || [];
-
+    this.site         = data.site  || '';
+    this.role         = data.role  || '';
+    this.color        = hashColor(this.manufacturer || this.deviceType || String(this.id));
+    this.ports        = data.ports || [];
     this.x = data.x ?? 0;
     this.y = data.y ?? 0;
     this.width  = 190;
@@ -52,25 +48,21 @@ class DeviceNode {
     const r = 7;
     const [cr, cg, cb] = hexToRgb(color);
 
-    // Drop shadow
     ctx.save();
-    ctx.shadowColor  = `rgba(${cr},${cg},${cb},0.35)`;
-    ctx.shadowBlur   = selected ? 20 : 10;
+    ctx.shadowColor   = `rgba(${cr},${cg},${cb},0.35)`;
+    ctx.shadowBlur    = selected ? 20 : 10;
     ctx.shadowOffsetY = 3;
 
-    // Body
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, r);
     ctx.fillStyle = '#161920';
     ctx.fill();
 
-    // Border
     ctx.strokeStyle = selected ? '#ffffff' : color;
     ctx.lineWidth   = selected ? 2.5 : 1.5;
     ctx.stroke();
     ctx.restore();
 
-    // Header bar
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(x, y, w, 24, [r, r, 0, 0]);
@@ -78,7 +70,6 @@ class DeviceNode {
     ctx.fill();
     ctx.restore();
 
-    // Device name in header
     ctx.save();
     ctx.font = 'bold 11px "Segoe UI", system-ui, monospace';
     ctx.textAlign    = 'center';
@@ -87,7 +78,6 @@ class DeviceNode {
     ctx.fillText(this._clip(ctx, this.label, w - 12), x + w / 2, y + 12);
     ctx.restore();
 
-    // Manufacturer + device type
     ctx.save();
     ctx.font = '10px "Segoe UI", system-ui, sans-serif';
     ctx.textAlign    = 'center';
@@ -97,7 +87,6 @@ class DeviceNode {
     ctx.fillText(this._clip(ctx, sub, w - 10), x + w / 2, y + 38);
     ctx.restore();
 
-    // Site / role footer
     if (this.site || this.role) {
       ctx.save();
       ctx.font = '9px "Segoe UI", system-ui, sans-serif';
@@ -136,75 +125,133 @@ class CableEdge {
     this.tgtNode    = tgtNode;
     this.srcPort    = data.source_port || '';
     this.tgtPort    = data.target_port || '';
-
-    // Cable colour from NetBox (hex without #) or fallback
     const raw = data.color ? data.color.replace('#', '') : '';
     this.color = raw.length >= 6 ? `#${raw}` : '#3d6fa8';
-
     this.edgeIndex  = 0;
     this.totalEdges = 1;
+    this.highlighted = false;
   }
 
-  draw(ctx) {
-    if (!this.srcNode || !this.tgtNode) return;
-    const sc = this.srcNode.centre();
-    const tc = this.tgtNode.centre();
-
-    // Self-loop guard
-    if (sc.x === tc.x && sc.y === tc.y) return;
-
-    // Perpendicular offset for parallel cables
+  /** Shared control-point geometry so draw() and hitTest() stay in sync. */
+  _cp(sc, tc) {
     const dx = tc.x - sc.x;
     const dy = tc.y - sc.y;
     const len = Math.hypot(dx, dy) || 1;
-    const px  = -dy / len;
-    const py  =  dx / len;
+    const nx = -dy / len;
+    const ny =  dx / len;
     const offset = (this.edgeIndex - (this.totalEdges - 1) / 2) * 14;
+    return { mx: (sc.x + tc.x) / 2 + nx * offset * 2.5,
+             my: (sc.y + tc.y) / 2 + ny * offset * 2.5, nx, ny };
+  }
 
-    // Control point (quad bezier midpoint, pushed perpendicular)
-    const mx = (sc.x + tc.x) / 2 + px * (offset * 2.5);
-    const my = (sc.y + tc.y) / 2 + py * (offset * 2.5);
+  /** Returns true when world point (wx,wy) is within threshold of the bezier. */
+  hitTest(wx, wy, threshold) {
+    if (!this.srcNode || !this.tgtNode) return false;
+    const sc = this.srcNode.centre();
+    const tc = this.tgtNode.centre();
+    if (sc.x === tc.x && sc.y === tc.y) return false;
+    const { mx, my } = this._cp(sc, tc);
+    for (let i = 0; i <= 30; i++) {
+      const t = i / 30, mt = 1 - t;
+      const bx = mt * mt * sc.x + 2 * mt * t * mx + t * t * tc.x;
+      const by = mt * mt * sc.y + 2 * mt * t * my + t * t * tc.y;
+      if (Math.hypot(wx - bx, wy - by) <= threshold) return true;
+    }
+    return false;
+  }
 
+  draw(ctx, pulsePhase = 0) {
+    if (!this.srcNode || !this.tgtNode) return;
+    const sc = this.srcNode.centre();
+    const tc = this.tgtNode.centre();
+    if (sc.x === tc.x && sc.y === tc.y) return;
+
+    const { mx, my, nx, ny } = this._cp(sc, tc);
+    const drawColor = this.highlighted ? '#7dd3fc' : this.color;
+
+    // Main line (with glow when highlighted)
+    ctx.save();
+    if (this.highlighted) { ctx.shadowColor = '#7dd3fc'; ctx.shadowBlur = 14; }
     ctx.beginPath();
     ctx.moveTo(sc.x, sc.y);
     ctx.quadraticCurveTo(mx, my, tc.x, tc.y);
-    ctx.strokeStyle = this.color;
-    ctx.lineWidth   = 1.5;
+    ctx.strokeStyle = drawColor;
+    ctx.lineWidth   = this.highlighted ? 2.5 : 1.5;
     ctx.stroke();
+    ctx.restore();
 
-    // Arrow head at target
-    this._arrowHead(ctx, mx, my, tc.x, tc.y);
+    // Animated pulse dash
+    if (this.highlighted) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(sc.x, sc.y);
+      ctx.quadraticCurveTo(mx, my, tc.x, tc.y);
+      ctx.strokeStyle    = 'rgba(186,230,253,0.85)';
+      ctx.lineWidth      = 3.5;
+      ctx.setLineDash([14, 28]);
+      ctx.lineDashOffset = -pulsePhase;
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    // Label at curve midpoint
+    // Arrow head
+    this._arrowHead(ctx, mx, my, tc.x, tc.y, drawColor);
+
+    // Cable label at curve mid-point
     if (this.label) {
       const lx = 0.25 * sc.x + 0.5 * mx + 0.25 * tc.x;
       const ly = 0.25 * sc.y + 0.5 * my + 0.25 * tc.y;
       ctx.save();
-      ctx.font         = '9px monospace';
+      ctx.font = '9px monospace';
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle    = '#6b7a99';
       ctx.fillText(this.label, lx, ly - 7);
       ctx.restore();
     }
+
+    // Port name annotations near each endpoint
+    this._drawPortLabels(ctx, sc, tc, mx, my, nx, ny);
   }
 
-  _arrowHead(ctx, cx, cy, tx, ty) {
+  _drawPortLabels(ctx, sc, tc, mx, my, nx, ny) {
+    if (!this.srcPort && !this.tgtPort) return;
+    const col  = this.highlighted ? '#7dd3fc' : '#4a6ea8';
+    const perp = 11; // world-pixel perpendicular offset from the curve
+
+    ctx.save();
+    ctx.font         = '9px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle    = col;
+
+    if (this.srcPort) {
+      const t = 0.18, mt = 1 - t;
+      const lx = mt * mt * sc.x + 2 * mt * t * mx + t * t * tc.x + nx * perp;
+      const ly = mt * mt * sc.y + 2 * mt * t * my + t * t * tc.y + ny * perp;
+      ctx.fillText(this.srcPort, lx, ly);
+    }
+
+    if (this.tgtPort) {
+      const t = 0.82, mt = 1 - t;
+      const lx = mt * mt * sc.x + 2 * mt * t * mx + t * t * tc.x + nx * perp;
+      const ly = mt * mt * sc.y + 2 * mt * t * my + t * t * tc.y + ny * perp;
+      ctx.fillText(this.tgtPort, lx, ly);
+    }
+
+    ctx.restore();
+  }
+
+  _arrowHead(ctx, cx, cy, tx, ty, color) {
     const angle = Math.atan2(ty - cy, tx - cx);
     const size  = 7;
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(tx, ty);
-    ctx.lineTo(
-      tx - size * Math.cos(angle - Math.PI / 6),
-      ty - size * Math.sin(angle - Math.PI / 6),
-    );
-    ctx.lineTo(
-      tx - size * Math.cos(angle + Math.PI / 6),
-      ty - size * Math.sin(angle + Math.PI / 6),
-    );
+    ctx.lineTo(tx - size * Math.cos(angle - Math.PI / 6), ty - size * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(tx - size * Math.cos(angle + Math.PI / 6), ty - size * Math.sin(angle + Math.PI / 6));
     ctx.closePath();
-    ctx.fillStyle = this.color;
+    ctx.fillStyle = color;
     ctx.fill();
     ctx.restore();
   }
@@ -225,11 +272,14 @@ class CanvasManager {
     this.panX  = 0;
     this.panY  = 0;
 
-    this._dragging  = null; // { node, ox, oy }
-    this._panning   = null; // { sx, sy, px, py }
+    this._dragging  = null;
+    this._panning   = null;
     this._dirty     = true;
+    this._pulse     = 0;
+    this._animating = false;
 
-    this.onSelectNode = null; // callback(node | null)
+    this.onSelectNode  = null;
+    this.onContextEdge = null;
 
     this._bindEvents();
     new ResizeObserver(() => this._resize()).observe(canvas.parentElement);
@@ -252,10 +302,8 @@ class CanvasManager {
       if (!pos) noPos.push(nd.id);
     }
 
-    // Auto-layout nodes without saved positions
     _gridLayout(noPos.map(id => this.nodes.get(id)));
 
-    // Build edges with parallel-edge indices
     const pairCount = new Map();
     for (const e of data.edges) {
       const key = _pairKey(e.source, e.target);
@@ -263,8 +311,8 @@ class CanvasManager {
     }
     const pairIdx = new Map();
     for (const e of data.edges) {
-      const src  = this.nodes.get(e.source);
-      const tgt  = this.nodes.get(e.target);
+      const src = this.nodes.get(e.source);
+      const tgt = this.nodes.get(e.target);
       if (!src || !tgt) continue;
       const key  = _pairKey(e.source, e.target);
       const idx  = pairIdx.get(key) || 0;
@@ -290,9 +338,7 @@ class CanvasManager {
     });
     const pad = 70;
     const cw = this.canvas.width, ch = this.canvas.height;
-    const scaleX = cw / (maxX - minX + pad * 2);
-    const scaleY = ch / (maxY - minY + pad * 2);
-    this.scale = Math.min(scaleX, scaleY, 1.8);
+    this.scale = Math.min(cw / (maxX - minX + pad * 2), ch / (maxY - minY + pad * 2), 1.8);
     this.panX  = (cw - (maxX - minX) * this.scale) / 2 - minX * this.scale;
     this.panY  = (ch - (maxY - minY) * this.scale) / 2 - minY * this.scale;
     this._dirty = true;
@@ -310,8 +356,7 @@ class CanvasManager {
 
   resetLayout() {
     _clearPositions();
-    const nodes = [...this.nodes.values()];
-    _gridLayout(nodes);
+    _gridLayout([...this.nodes.values()]);
     this.fitView();
   }
 
@@ -319,8 +364,26 @@ class CanvasManager {
     return { x: (sx - this.panX) / this.scale, y: (sy - this.panY) / this.scale };
   }
 
+  // ── Trace helpers ──────────────────────────────────────────────────────
+  clearTrace() {
+    this.edges.forEach(e => { e.highlighted = false; });
+    this._animating = false;
+    this._dirty = true;
+  }
+
+  highlightEdges(idSet) {
+    this.edges.forEach(e => { e.highlighted = idSet.has(e.id); });
+    this._animating = idSet.size > 0;
+    this._dirty = true;
+  }
+
   // ── Rendering ──────────────────────────────────────────────────────────
   _loop() {
+    if (this._animating) {
+      // Cycle over one full dash period (42 px) for seamless looping
+      this._pulse = (performance.now() * 0.05) % 42;
+      this._dirty = true;
+    }
     if (this._dirty) { this._render(); this._dirty = false; }
     requestAnimationFrame(() => this._loop());
   }
@@ -330,28 +393,20 @@ class CanvasManager {
     const w = canvas.width, h = canvas.height;
 
     ctx.clearRect(0, 0, w, h);
-
-    // Background
     ctx.fillStyle = '#0A0C10';
     ctx.fillRect(0, 0, w, h);
 
-    // Grid
     _drawGrid(ctx, w, h, this.scale, this.panX, this.panY);
 
-    // World transform
     ctx.save();
     ctx.translate(this.panX, this.panY);
     ctx.scale(this.scale, this.scale);
 
-    // Edges (beneath nodes)
-    for (const e of this.edges) e.draw(ctx);
-
-    // Nodes
+    for (const e of this.edges) e.draw(ctx, this._pulse);
     this.nodes.forEach(n => n.draw(ctx));
 
     ctx.restore();
 
-    // HUD
     _drawHUD(ctx, w, h, this.scale, this.nodes.size, this.edges.length);
   }
 
@@ -364,6 +419,7 @@ class CanvasManager {
     c.addEventListener('mouseleave',  e => this._onUp(e));
     c.addEventListener('wheel',       e => this._onWheel(e), { passive: false });
     c.addEventListener('dblclick',    () => this.fitView());
+    c.addEventListener('contextmenu', e => this._onContextMenu(e));
   }
 
   _canvasXY(e) {
@@ -371,11 +427,21 @@ class CanvasManager {
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
+  _onContextMenu(e) {
+    e.preventDefault();
+    const s = this._canvasXY(e);
+    const w = this.screenToWorld(s.x, s.y);
+    const threshold = 8 / this.scale;
+    const edge = this.edges.find(edge => edge.hitTest(w.x, w.y, threshold));
+    if (edge && this.onContextEdge) this.onContextEdge(edge, e.clientX, e.clientY);
+  }
+
   _onDown(e) {
+    if (e.button !== 0) return; // ignore right / middle click
+
     const s = this._canvasXY(e);
     const w = this.screenToWorld(s.x, s.y);
     let hit = null;
-    // Iterate in reverse so topmost node wins
     const arr = [...this.nodes.values()].reverse();
     for (const n of arr) { if (n.hitTest(w.x, w.y)) { hit = n; break; } }
 
@@ -407,9 +473,10 @@ class CanvasManager {
     } else {
       const s = this._canvasXY(e);
       const w = this.screenToWorld(s.x, s.y);
-      let over = false;
-      this.nodes.forEach(n => { if (n.hitTest(w.x, w.y)) over = true; });
-      this.canvas.style.cursor = over ? 'pointer' : 'default';
+      let overNode = false;
+      this.nodes.forEach(n => { if (n.hitTest(w.x, w.y)) overNode = true; });
+      const overEdge = !overNode && this.edges.some(edge => edge.hitTest(w.x, w.y, 6 / this.scale));
+      this.canvas.style.cursor = overNode ? 'pointer' : overEdge ? 'context-menu' : 'default';
     }
   }
 
@@ -504,6 +571,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const filterRole   = document.getElementById('filter-role');
   const connectBar   = document.getElementById('topo-connect-bar');
   const connectLabel = document.getElementById('topo-connect-label');
+  const ctxMenu      = document.getElementById('topo-ctx-menu');
+  const ctxEdgeLabel = document.getElementById('topo-ctx-edge-label');
+  const btnClearTrace = document.getElementById('btn-clear-trace');
 
   const mgr = new CanvasManager(canvas);
 
@@ -530,8 +600,6 @@ document.addEventListener('DOMContentLoaded', () => {
     detail.classList.add('topo-detail-hidden');
   });
 
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') exitConnectMode(); });
-
   async function createCable(toPort) {
     const body = {
       a_terminations: [{ object_type: connectState.fromPort.object_type, object_id: connectState.fromPort.id }],
@@ -557,6 +625,126 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       alert(`Error: ${e.message}`);
     }
+  }
+
+  // ── Context menu ───────────────────────────────────────────────
+  let ctxEdge = null;
+
+  function hideCtxMenu() {
+    ctxMenu.style.display = 'none';
+    ctxEdge = null;
+  }
+
+  mgr.onContextEdge = (edge, screenX, screenY) => {
+    ctxEdge = edge;
+
+    const srcLabel = `${_short(edge.srcNode.label)}:${edge.srcPort}`;
+    const tgtLabel = `${_short(edge.tgtNode.label)}:${edge.tgtPort}`;
+    ctxEdgeLabel.textContent = `${srcLabel} → ${tgtLabel}`;
+
+    document.getElementById('ctx-trace-ab').textContent =
+      `▶ Signal enters ${_short(edge.tgtNode.label)} at ${edge.tgtPort}`;
+    document.getElementById('ctx-trace-ba').textContent =
+      `◀ Signal enters ${_short(edge.srcNode.label)} at ${edge.srcPort}`;
+
+    // Position menu, keeping it inside the viewport
+    ctxMenu.style.display = '';
+    const mw = ctxMenu.offsetWidth;
+    const mh = ctxMenu.offsetHeight;
+    ctxMenu.style.left = Math.min(screenX + 2, window.innerWidth  - mw - 8) + 'px';
+    ctxMenu.style.top  = Math.min(screenY + 2, window.innerHeight - mh - 8) + 'px';
+  };
+
+  document.getElementById('ctx-trace-ab').addEventListener('click', async () => {
+    if (!ctxEdge) return;
+    const edge = ctxEdge;
+    hideCtxMenu();
+    const ids = await _traceSignal(edge.tgtNode.id, edge.tgtPort);
+    ids.add(edge.id); // always highlight the clicked cable too
+    mgr.highlightEdges(ids);
+    btnClearTrace.style.display = '';
+  });
+
+  document.getElementById('ctx-trace-ba').addEventListener('click', async () => {
+    if (!ctxEdge) return;
+    const edge = ctxEdge;
+    hideCtxMenu();
+    const ids = await _traceSignal(edge.srcNode.id, edge.srcPort);
+    ids.add(edge.id);
+    mgr.highlightEdges(ids);
+    btnClearTrace.style.display = '';
+  });
+
+  document.getElementById('ctx-clear-trace').addEventListener('click', () => {
+    hideCtxMenu();
+    mgr.clearTrace();
+    btnClearTrace.style.display = 'none';
+  });
+
+  btnClearTrace.addEventListener('click', () => {
+    mgr.clearTrace();
+    btnClearTrace.style.display = 'none';
+  });
+
+  // Dismiss context menu on outside click or Escape
+  document.addEventListener('click', e => {
+    if (!ctxMenu.contains(e.target)) hideCtxMenu();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      hideCtxMenu();
+      exitConnectMode();
+      if (mgr._animating) { mgr.clearTrace(); btnClearTrace.style.display = 'none'; }
+    }
+  });
+
+  // ── Signal trace BFS ───────────────────────────────────────────
+  /**
+   * Multi-hop forward trace starting from a device port.
+   * Calls the device signal trace API iteratively, following exit ports
+   * to connected cable edges across the full topology.
+   */
+  async function _traceSignal(startDeviceId, startPort, startSignal = 1) {
+    const tracedIds = new Set();
+    const queue     = [{ deviceId: startDeviceId, portName: startPort, signal: startSignal }];
+    const visited   = new Set();
+
+    while (queue.length > 0) {
+      const { deviceId, portName, signal } = queue.shift();
+      const key = `${deviceId}:${portName}:${signal}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      let data;
+      try {
+        const res = await fetch(
+          `/api/plugins/innovace-fibre/trace/device/${deviceId}/?port=${encodeURIComponent(portName)}&signal=${signal}`,
+          { headers: { 'X-CSRFToken': _csrf() } },
+        );
+        if (!res.ok) continue;
+        data = await res.json();
+      } catch { continue; }
+
+      for (const branch of (data.paths || [])) {
+        if (!branch.length) continue; // terminal — no outgoing internal routing
+        const last = branch[branch.length - 1];
+
+        // Find topology edges where this device's exit port is the source
+        for (const edge of mgr.edges) {
+          if (edge.srcNode.id === deviceId && edge.srcPort === last.to_port) {
+            tracedIds.add(edge.id);
+            queue.push({ deviceId: edge.tgtNode.id, portName: edge.tgtPort, signal: last.to_signal });
+          }
+          // Also traverse bidirectional exits in the reverse cable direction
+          if (last.is_bidirectional && edge.tgtNode.id === deviceId && edge.tgtPort === last.to_port) {
+            tracedIds.add(edge.id);
+            queue.push({ deviceId: edge.srcNode.id, portName: edge.srcPort, signal: last.to_signal });
+          }
+        }
+      }
+    }
+
+    return tracedIds;
   }
 
   // ── Detail panel ───────────────────────────────────────────────
@@ -605,8 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     detailBody.querySelectorAll('.topo-port-btn:not(.select)').forEach(btn => {
       btn.addEventListener('click', () => {
-        const port = node.ports[+btn.dataset.idx];
-        enterConnectMode(node, port);
+        enterConnectMode(node, node.ports[+btn.dataset.idx]);
         renderDetail(node);
       });
     });
@@ -630,6 +817,10 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  function _short(s, max = 14) {
+    return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  }
+
   document.getElementById('btn-close-detail').addEventListener('click', () => {
     detail.classList.add('topo-detail-hidden');
   });
@@ -639,9 +830,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-fit')     .addEventListener('click', () => mgr.fitView());
   document.getElementById('btn-reset-layout').addEventListener('click', () => mgr.resetLayout());
 
-  // ── Load data ──────────────────────────────────────────────────
+  // ── Load topology data ─────────────────────────────────────────
   async function loadTopology() {
-    loading.style.display = '';
+    loading.style.display  = '';
     emptyMsg.style.display = 'none';
 
     const params = new URLSearchParams();
@@ -677,9 +868,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       mgr.load(data);
     } catch (err) {
-      loading.style.display = 'none';
+      loading.style.display  = 'none';
       emptyMsg.style.display = '';
-      emptyMsg.textContent = `Failed to load topology: ${err.message}`;
+      emptyMsg.textContent   = `Failed to load topology: ${err.message}`;
       console.error(err);
     }
   }
