@@ -11,7 +11,9 @@
       "PowerShell(docker compose logs netbox --tail=60 2>&1)",
       "PowerShell(Select-String -Pattern \"Error|error|Traceback|Exception|500|topology\" -CaseSensitive:$false)",
       "PowerShell(docker compose logs netbox --tail=80 2>&1)",
-      "PowerShell(docker compose logs netbox --since=1m 2>&1)"
+      "PowerShell(docker compose logs netbox --since=1m 2>&1)",
+      "Bash(cat docker-compose.yml)",
+      "Bash(cat docker-compose.yaml)"
     ]
   }
 }

@@ -150,11 +150,14 @@ class CableEdge {
     const sc = this.srcNode.centre();
     const tc = this.tgtNode.centre();
     if (sc.x === tc.x && sc.y === tc.y) return false;
+    const dx = tc.x - sc.x, dy = tc.y - sc.y;
+    const sa = _rectEdgePoint(sc.x, sc.y,  dx,  dy, this.srcNode);
+    const ta = _rectEdgePoint(tc.x, tc.y, -dx, -dy, this.tgtNode);
     const { mx, my } = this._cp(sc, tc);
     for (let i = 0; i <= 30; i++) {
       const t = i / 30, mt = 1 - t;
-      const bx = mt * mt * sc.x + 2 * mt * t * mx + t * t * tc.x;
-      const by = mt * mt * sc.y + 2 * mt * t * my + t * t * tc.y;
+      const bx = mt * mt * sa.x + 2 * mt * t * mx + t * t * ta.x;
+      const by = mt * mt * sa.y + 2 * mt * t * my + t * t * ta.y;
       if (Math.hypot(wx - bx, wy - by) <= threshold) return true;
     }
     return false;
@@ -166,6 +169,9 @@ class CableEdge {
     const tc = this.tgtNode.centre();
     if (sc.x === tc.x && sc.y === tc.y) return;
 
+    const dx = tc.x - sc.x, dy = tc.y - sc.y;
+    const sa = _rectEdgePoint(sc.x, sc.y,  dx,  dy, this.srcNode);
+    const ta = _rectEdgePoint(tc.x, tc.y, -dx, -dy, this.tgtNode);
     const { mx, my, nx, ny } = this._cp(sc, tc);
     const drawColor = this.highlighted ? '#7dd3fc' : this.color;
 
@@ -173,8 +179,8 @@ class CableEdge {
     ctx.save();
     if (this.highlighted) { ctx.shadowColor = '#7dd3fc'; ctx.shadowBlur = 14; }
     ctx.beginPath();
-    ctx.moveTo(sc.x, sc.y);
-    ctx.quadraticCurveTo(mx, my, tc.x, tc.y);
+    ctx.moveTo(sa.x, sa.y);
+    ctx.quadraticCurveTo(mx, my, ta.x, ta.y);
     ctx.strokeStyle = drawColor;
     ctx.lineWidth   = this.highlighted ? 2.5 : 1.5;
     ctx.stroke();
@@ -184,8 +190,8 @@ class CableEdge {
     if (this.highlighted) {
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(sc.x, sc.y);
-      ctx.quadraticCurveTo(mx, my, tc.x, tc.y);
+      ctx.moveTo(sa.x, sa.y);
+      ctx.quadraticCurveTo(mx, my, ta.x, ta.y);
       ctx.strokeStyle    = 'rgba(186,230,253,0.85)';
       ctx.lineWidth      = 3.5;
       ctx.setLineDash([14, 28]);
@@ -195,47 +201,65 @@ class CableEdge {
     }
 
     // Arrow head
-    this._arrowHead(ctx, mx, my, tc.x, tc.y, drawColor);
+    this._arrowHead(ctx, mx, my, ta.x, ta.y, drawColor);
+
+  }
+
+  /** Called after all nodes are painted so labels appear on top. */
+  drawAnnotations(ctx, scale = 1) {
+    if (!this.srcNode || !this.tgtNode) return;
+    const sc = this.srcNode.centre();
+    const tc = this.tgtNode.centre();
+    if (sc.x === tc.x && sc.y === tc.y) return;
+    const dx = tc.x - sc.x, dy = tc.y - sc.y;
+    const sa = _rectEdgePoint(sc.x, sc.y,  dx,  dy, this.srcNode);
+    const ta = _rectEdgePoint(tc.x, tc.y, -dx, -dy, this.tgtNode);
+    const { mx, my, nx, ny } = this._cp(sc, tc);
 
     // Cable label at curve mid-point
     if (this.label) {
-      const lx = 0.25 * sc.x + 0.5 * mx + 0.25 * tc.x;
-      const ly = 0.25 * sc.y + 0.5 * my + 0.25 * tc.y;
+      const lx = 0.25 * sa.x + 0.5 * mx + 0.25 * ta.x;
+      const ly = 0.25 * sa.y + 0.5 * my + 0.25 * ta.y;
+      const fs = Math.max(8, Math.round(10 / scale));
       ctx.save();
-      ctx.font = '9px monospace';
+      ctx.font         = `${fs}px monospace`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle    = '#6b7a99';
-      ctx.fillText(this.label, lx, ly - 7);
+      ctx.shadowColor  = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur   = 4;
+      ctx.fillStyle    = '#9eaec8';
+      ctx.fillText(this.label, lx, ly - 8);
       ctx.restore();
     }
 
-    // Port name annotations near each endpoint
-    this._drawPortLabels(ctx, sc, tc, mx, my, nx, ny);
+    this._drawPortLabels(ctx, sa, ta, mx, my, nx, ny, scale);
   }
 
-  _drawPortLabels(ctx, sc, tc, mx, my, nx, ny) {
+  _drawPortLabels(ctx, sa, ta, mx, my, nx, ny, scale = 1) {
     if (!this.srcPort && !this.tgtPort) return;
-    const col  = this.highlighted ? '#7dd3fc' : '#4a6ea8';
-    const perp = 11; // world-pixel perpendicular offset from the curve
+    const col  = this.highlighted ? '#7dd3fc' : '#a8c8f0';
+    const perp = 13; // world-pixel perpendicular offset from the curve
+    const fs   = Math.max(8, Math.round(10 / scale));
 
     ctx.save();
-    ctx.font         = '9px monospace';
+    ctx.font         = `${fs}px monospace`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur   = 4;
     ctx.fillStyle    = col;
 
     if (this.srcPort) {
-      const t = 0.18, mt = 1 - t;
-      const lx = mt * mt * sc.x + 2 * mt * t * mx + t * t * tc.x + nx * perp;
-      const ly = mt * mt * sc.y + 2 * mt * t * my + t * t * tc.y + ny * perp;
+      const t = 0.15, mt = 1 - t;
+      const lx = mt * mt * sa.x + 2 * mt * t * mx + t * t * ta.x + nx * perp;
+      const ly = mt * mt * sa.y + 2 * mt * t * my + t * t * ta.y + ny * perp;
       ctx.fillText(this.srcPort, lx, ly);
     }
 
     if (this.tgtPort) {
-      const t = 0.82, mt = 1 - t;
-      const lx = mt * mt * sc.x + 2 * mt * t * mx + t * t * tc.x + nx * perp;
-      const ly = mt * mt * sc.y + 2 * mt * t * my + t * t * tc.y + ny * perp;
+      const t = 0.85, mt = 1 - t;
+      const lx = mt * mt * sa.x + 2 * mt * t * mx + t * t * ta.x + nx * perp;
+      const ly = mt * mt * sa.y + 2 * mt * t * my + t * t * ta.y + ny * perp;
       ctx.fillText(this.tgtPort, lx, ly);
     }
 
@@ -404,6 +428,7 @@ class CanvasManager {
 
     for (const e of this.edges) e.draw(ctx, this._pulse);
     this.nodes.forEach(n => n.draw(ctx));
+    for (const e of this.edges) e.drawAnnotations(ctx, this.scale);
 
     ctx.restore();
 
@@ -508,6 +533,19 @@ class CanvasManager {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function _pairKey(a, b) { return `${Math.min(a, b)}_${Math.max(a, b)}`; }
+
+/** Returns the point where the ray from (cx,cy) in direction (dx,dy) exits node's bounding box. */
+function _rectEdgePoint(cx, cy, dx, dy, node) {
+  const hw = node.width  / 2;
+  const hh = node.height / 2;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  let t = Infinity;
+  if (dx > 0) t = Math.min(t,  hw / dx);
+  if (dx < 0) t = Math.min(t, -hw / dx);
+  if (dy > 0) t = Math.min(t,  hh / dy);
+  if (dy < 0) t = Math.min(t, -hh / dy);
+  return { x: cx + t * dx, y: cy + t * dy };
+}
 
 function _gridLayout(nodes) {
   const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
@@ -648,7 +686,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `◀ Signal enters ${_short(edge.srcNode.label)} at ${edge.srcPort}`;
 
     // Position menu, keeping it inside the viewport
-    ctxMenu.style.display = '';
+    ctxMenu.style.display = 'block';
     const mw = ctxMenu.offsetWidth;
     const mh = ctxMenu.offsetHeight;
     ctxMenu.style.left = Math.min(screenX + 2, window.innerWidth  - mw - 8) + 'px';
