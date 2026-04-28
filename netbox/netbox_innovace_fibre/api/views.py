@@ -192,8 +192,8 @@ class Rack3DDataAPIView(APIView):
         device_list = []
         for dev in devices_qs:
             dt = dev.device_type
-            front_image = request.build_absolute_uri(dt.front_image.url) if dt.front_image else None
-            rear_image  = request.build_absolute_uri(dt.rear_image.url)  if dt.rear_image  else None
+            front_image = dt.front_image.url if dt.front_image else None
+            rear_image  = dt.rear_image.url  if dt.rear_image  else None
             device_list.append({
                 'id':            dev.pk,
                 'name':          dev.name or f'Device {dev.pk}',

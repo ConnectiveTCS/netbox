@@ -43,6 +43,7 @@ function orientToRad(o) {
 }
 
 function getCsrfToken() {
+    if (window.CSRF_TOKEN) return window.CSRF_TOKEN;
     const match = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
     return match ? match.trim().split('=')[1] : '';
 }
@@ -64,6 +65,14 @@ class RackScene {
 
         this._css2d = new CSS2DRenderer();
         this._css2d.domElement.classList.add('css2d-renderer');
+        const s = this._css2d.domElement.style;
+        s.position = 'absolute';
+        s.top = '0';
+        s.left = '0';
+        s.width = '100%';
+        s.height = '100%';
+        s.pointerEvents = 'none';
+        s.overflow = 'hidden';
         container.appendChild(this._css2d.domElement);
 
         this._scene = new THREE.Scene();
@@ -81,10 +90,22 @@ class RackScene {
         this._scene.add(fill);
 
         this._controls = new OrbitControls(this._camera, this._renderer.domElement);
-        this._controls.enableDamping = true;
-        this._controls.dampingFactor = 0.06;
-        this._controls.minDistance = 2;
-        this._controls.maxDistance = 600;
+        this._controls.enableDamping   = true;
+        this._controls.dampingFactor   = 0.12;   // snappier response
+        this._controls.minDistance     = 2;
+        this._controls.maxDistance     = 600;
+        // Left-drag = pan (matches floor-plan / CAD conventions)
+        // Right-drag = orbit/spin
+        this._controls.mouseButtons    = {
+            LEFT:   THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT:  THREE.MOUSE.PAN,
+        };
+        // Pan follows the screen axes (mouse left ↔ view left, mouse up ↔ view up)
+        this._controls.screenSpacePanning = true;
+        this._controls.panSpeed        = 2.0;    // 1:1 — viewport unit per pixel
+        this._controls.rotateSpeed     = 0.6;    // slightly slower for precision
+        this._controls.zoomSpeed       = 1.2;
 
         this._raycaster = new THREE.Raycaster();
         this._mouse = new THREE.Vector2();
@@ -149,6 +170,11 @@ class RackScene {
     setTheme(theme) {
         this._settings = { ...this._settings, theme };
         this._updateSceneBg({ theme });
+    }
+
+    setLabelMode(mode) {
+        this._settings = { ...this._settings, labels: mode };
+        this._applyLabelMode(mode);
     }
 
     resetCamera(rack, settings) {
@@ -295,6 +321,19 @@ class RackScene {
             const deviceDepth = dev.is_full_depth ? depth : depth * 0.55;
             const yBottom = this._calcY(dev, rack, sc);
 
+            // Align device Z with its mounting rail:
+            //   full-depth  → centred across full depth
+            //   front-face  → flush with the +Z (camera-side) inner rail face
+            //   rear-face   → flush with the -Z inner rail face
+            let deviceZ;
+            if (dev.is_full_depth) {
+                deviceZ = offset.z;
+            } else if (dev.face === 'front') {
+                deviceZ = offset.z + depth / 2 - deviceDepth / 2;
+            } else {
+                deviceZ = offset.z - depth / 2 + deviceDepth / 2;
+            }
+
             const geo = new THREE.BoxGeometry(RACK_WIDTH - POST_W * 2, deviceH, deviceDepth);
             const materials = [
                 darkMat, darkMat,
@@ -304,7 +343,7 @@ class RackScene {
             ];
 
             const mesh = new THREE.Mesh(geo, materials);
-            mesh.position.set(offset.x, offset.y + yBottom + deviceH / 2, offset.z);
+            mesh.position.set(offset.x, offset.y + yBottom + deviceH / 2, deviceZ);
             mesh.userData = { deviceId: dev.id, deviceData: dev };
             target.add(mesh);
             if (!parent) this._meshes.push(mesh);
@@ -323,19 +362,32 @@ class RackScene {
 
     _faceMat(dev, side, loader, settings, colors) {
         const url = side === 'front' ? dev.front_image : dev.rear_image;
-        if (settings.colorBy === 'image' && url) {
-            const tex = loader.load(url);
-            tex.colorSpace = THREE.SRGBColorSpace;
-            this._textures.push(tex);
-            return new THREE.MeshBasicMaterial({ map: tex });
+        if (settings.colorBy === 'image') {
+            if (url) {
+                const tex = loader.load(url);
+                tex.colorSpace = THREE.SRGBColorSpace;
+                this._textures.push(tex);
+                return new THREE.MeshBasicMaterial({ map: tex });
+            }
+            // No image — fall back to device-type hash
+            return new THREE.MeshStandardMaterial({
+                color: hashColor(dev.device_type || String(dev.id)),
+                metalness: 0.3, roughness: 0.6,
+            });
         }
         let color;
-        if (settings.colorBy === 'role' && dev.role_color) color = roleColorInt(dev.role_color);
-        else color = hashColor(dev.manufacturer || dev.device_type || String(dev.id));
+        if (settings.colorBy === 'role') {
+            color = dev.role_color ? roleColorInt(dev.role_color) : hashColor(dev.role || 'unassigned');
+        } else {
+            // manufacturer (or unknown fallback)
+            color = hashColor(dev.manufacturer || dev.device_type || String(dev.id));
+        }
         return new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.6 });
     }
 
     _buildEmptySlots(rackData, settings, offset, parent) {
+        // Blank panels are front-mounted only — skip entirely for rear-only view
+        if (settings.face === 'rear') return;
         const target = parent || this._scene;
         const { rack, devices } = rackData;
         const sc = parseFloat(settings.scale) || 1;
@@ -352,12 +404,15 @@ class RackScene {
 
         const mat = new THREE.MeshStandardMaterial({ color: colors.blank, metalness: 0.25, roughness: 0.75 });
         const slotH = U_SCALE_BASE * sc;
+        const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
+        // Blank panels sit flush with the front (+Z) mounting rail, same as front-mounted devices
+        const blankZ = offset.z + depth / 2 - BLANK_DEPTH / 2;
 
         for (let u = rack.starting_unit; u < rack.starting_unit + rack.u_height; u++) {
             if (occupied.has(u * 2)) continue;
             const geo = new THREE.BoxGeometry(RACK_WIDTH - POST_W * 2 - 0.05, slotH - 0.08, BLANK_DEPTH);
             const m = new THREE.Mesh(geo, mat);
-            m.position.set(offset.x, offset.y + this._calcYFromUnit(u, rack, sc) + slotH / 2, offset.z);
+            m.position.set(offset.x, offset.y + this._calcYFromUnit(u, rack, sc) + slotH / 2, blankZ);
             target.add(m);
             if (!parent) this._meshes.push(m);
         }
@@ -393,15 +448,15 @@ class RackScene {
     }
 
     _applyLabelMode(mode) {
-        if (mode === 'on') { this._labels.forEach(l => { l.element.style.display = ''; }); return; }
-        if (mode === 'off') { this._labels.forEach(l => { l.element.style.display = 'none'; }); return; }
+        if (mode === 'on') { this._labels.forEach(l => { l.visible = true; }); return; }
+        if (mode === 'off') { this._labels.forEach(l => { l.visible = false; }); return; }
         this._updateLabelVisibility();
     }
 
     _updateLabelVisibility() {
         const dist = this._camera.position.distanceTo(this._controls.target);
         const show = dist < LABEL_SHOW_DIST;
-        this._labels.forEach(l => { l.element.style.display = show ? '' : 'none'; });
+        this._labels.forEach(l => { l.visible = show; });
     }
 
     _animate() {
@@ -769,25 +824,25 @@ class FloorCanvas {
 
 class AppController {
     constructor() {
-        this._viewport    = document.getElementById('r3d-viewport');
-        this._loading     = document.getElementById('r3d-loading');
-        this._empty       = document.getElementById('r3d-empty');
-        this._siteSel     = document.getElementById('filter-site');
-        this._rackSel     = document.getElementById('filter-rack');
+        this._viewport = document.getElementById('r3d-viewport');
+        this._loading = document.getElementById('r3d-loading');
+        this._empty = document.getElementById('r3d-empty');
+        this._siteSel = document.getElementById('filter-site');
+        this._rackSel = document.getElementById('filter-rack');
         this._configPanel = document.getElementById('r3d-config');
         this._layoutPanel = document.getElementById('r3d-layout-panel');
-        this._infoPanel   = document.getElementById('r3d-info');
-        this._infoTitle   = document.getElementById('r3d-info-title');
-        this._infoBody    = document.getElementById('r3d-info-body');
-        this._root        = document.getElementById('rack3d-root');
-        this._themeBtn    = document.getElementById('btn-theme-toggle');
-        this._saveStatus  = document.getElementById('r3d-save-status');
+        this._infoPanel = document.getElementById('r3d-info');
+        this._infoTitle = document.getElementById('r3d-info-title');
+        this._infoBody = document.getElementById('r3d-info-body');
+        this._root = document.getElementById('rack3d-root');
+        this._themeBtn = document.getElementById('btn-theme-toggle');
+        this._saveStatus = document.getElementById('r3d-save-status');
 
-        this._allRacks    = [];
+        this._allRacks = [];
         this._loadedRacks = {};   // rackId → rackData (cache)
-        this._loadId      = 0;
+        this._loadId = 0;
         this._currentData = null; // single-rack mode
-        this._layoutMode  = false;
+        this._layoutMode = false;
 
         /** @type {FloorCanvas|null} */
         this._canvas = null;
@@ -804,11 +859,11 @@ class AppController {
         try {
             const s = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
             if (s.theme) this._root.setAttribute('data-theme', s.theme);
-            if (s.scale)  document.querySelector(`input[name="scale"][value="${s.scale}"]`)?.click();
-            if (s.depth)  document.querySelector(`input[name="depth"][value="${s.depth}"]`)?.click();
+            if (s.scale) document.querySelector(`input[name="scale"][value="${s.scale}"]`)?.click();
+            if (s.depth) document.querySelector(`input[name="depth"][value="${s.depth}"]`)?.click();
             if (s.labels) document.querySelector(`input[name="labels"][value="${s.labels}"]`)?.click();
             if (s.colorby) document.querySelector(`input[name="colorby"][value="${s.colorby}"]`)?.click();
-            if (s.empty)  document.querySelector(`input[name="empty"][value="${s.empty}"]`)?.click();
+            if (s.empty) document.querySelector(`input[name="empty"][value="${s.empty}"]`)?.click();
             if (s.railFL) document.getElementById('cfg-rail-fl').value = s.railFL;
             if (s.railFR) document.getElementById('cfg-rail-fr').value = s.railFR;
             if (s.railRL) document.getElementById('cfg-rail-rl').value = s.railRL;
@@ -863,7 +918,16 @@ class AppController {
         document.getElementById('btn-config-close').addEventListener('click', () => {
             this._configPanel.classList.add('r3d-config-hidden');
         });
-        this._configPanel.addEventListener('change', () => {
+        // Labels toggle: update visibility only — no scene rebuild needed
+        this._configPanel.querySelectorAll('input[name="labels"]').forEach(radio => {
+            radio.addEventListener('change', e => {
+                this._scene.setLabelMode(e.target.value);
+                this._saveSettings();
+            });
+        });
+        this._configPanel.addEventListener('change', e => {
+            // Skip labels — handled above without a rebuild
+            if (e.target.name === 'labels') return;
             this._rebuildScene();
             this._saveSettings();
         });
@@ -909,9 +973,9 @@ class AppController {
             const action = item.dataset.action;
             const id = this._canvas?._ctxMenuRackId;
             if (id) {
-                if (action === 'rotateCW')  this._canvas.rotateRack(id, 1);
+                if (action === 'rotateCW') this._canvas.rotateRack(id, 1);
                 if (action === 'rotateCCW') this._canvas.rotateRack(id, -1);
-                if (action === 'remove')    { this._canvas.removeRack(id); this._updateUnplacedList(); }
+                if (action === 'remove') { this._canvas.removeRack(id); this._updateUnplacedList(); }
             }
             document.getElementById('r3d-ctx-menu').classList.add('r3d-ctx-hidden');
         });
@@ -1049,10 +1113,10 @@ class AppController {
         if (!this._canvas) return;
 
         const floor = {
-            width:    parseFloat(document.getElementById('cfg-floor-w').value) || 400,
-            depth:    parseFloat(document.getElementById('cfg-floor-d').value) || 300,
+            width: parseFloat(document.getElementById('cfg-floor-w').value) || 400,
+            depth: parseFloat(document.getElementById('cfg-floor-d').value) || 300,
             gridSnap: parseFloat(document.getElementById('cfg-grid-snap').value) || 12,
-            unit:     document.getElementById('cfg-floor-unit').value || 'in',
+            unit: document.getElementById('cfg-floor-unit').value || 'in',
         };
 
         const config = {
@@ -1124,8 +1188,8 @@ class AppController {
         this._showLoading(false);
 
         const floor = {
-            width:  parseFloat(document.getElementById('cfg-floor-w').value) || 400,
-            depth:  parseFloat(document.getElementById('cfg-floor-d').value) || 300,
+            width: parseFloat(document.getElementById('cfg-floor-w').value) || 400,
+            depth: parseFloat(document.getElementById('cfg-floor-d').value) || 300,
         };
         this._scene.loadLayout(placements, this._loadedRacks, {
             ...this._settings(),
@@ -1141,10 +1205,10 @@ class AppController {
             const data = await res.json();
             const cfg = data.config || {};
             if (cfg.floor) {
-                if (cfg.floor.width)    document.getElementById('cfg-floor-w').value = cfg.floor.width;
-                if (cfg.floor.depth)    document.getElementById('cfg-floor-d').value = cfg.floor.depth;
+                if (cfg.floor.width) document.getElementById('cfg-floor-w').value = cfg.floor.width;
+                if (cfg.floor.depth) document.getElementById('cfg-floor-d').value = cfg.floor.depth;
                 if (cfg.floor.gridSnap) document.getElementById('cfg-grid-snap').value = cfg.floor.gridSnap;
-                if (cfg.floor.unit)     document.getElementById('cfg-floor-unit').value = cfg.floor.unit;
+                if (cfg.floor.unit) document.getElementById('cfg-floor-unit').value = cfg.floor.unit;
                 this._syncCanvasConfig();
             }
             if (cfg.racks?.length) {
@@ -1157,12 +1221,12 @@ class AppController {
     _syncCanvasConfig() {
         if (!this._canvas) return;
         this._canvas.setConfig({
-            width:       parseFloat(document.getElementById('cfg-floor-w').value) || 400,
-            depth:       parseFloat(document.getElementById('cfg-floor-d').value) || 300,
-            gridSnap:    parseFloat(document.getElementById('cfg-grid-snap').value) || 12,
+            width: parseFloat(document.getElementById('cfg-floor-w').value) || 400,
+            depth: parseFloat(document.getElementById('cfg-floor-d').value) || 300,
+            gridSnap: parseFloat(document.getElementById('cfg-grid-snap').value) || 12,
             snapEnabled: document.getElementById('cfg-snap-on').checked,
-            rackDepth:   parseFloat(document.getElementById('cfg-rack-depth').value) || 40,
-            unit:        document.getElementById('cfg-floor-unit').value || 'in',
+            rackDepth: parseFloat(document.getElementById('cfg-rack-depth').value) || 40,
+            unit: document.getElementById('cfg-floor-unit').value || 'in',
         });
     }
 
@@ -1196,9 +1260,9 @@ class AppController {
     }
 
     _onCanvasSelection(sel) {
-        const propName   = document.getElementById('prop-rack-name');
-        const propX      = document.getElementById('prop-x');
-        const propZ      = document.getElementById('prop-z');
+        const propName = document.getElementById('prop-rack-name');
+        const propX = document.getElementById('prop-x');
+        const propZ = document.getElementById('prop-z');
         const propOrient = document.getElementById('prop-orient');
         const propsPanel = document.getElementById('r3d-rack-props');
 
@@ -1209,8 +1273,8 @@ class AppController {
 
         propsPanel?.classList.remove('r3d-props-hidden');
         if (propName) propName.textContent = sel.rack?.name || `Rack ${sel.rackId}`;
-        if (propX)    propX.value = sel.x;
-        if (propZ)    propZ.value = sel.z;
+        if (propX) propX.value = sel.x;
+        if (propZ) propZ.value = sel.z;
         if (propOrient) propOrient.value = sel.orientation;
     }
 
@@ -1241,8 +1305,8 @@ class AppController {
             const placements = this._canvas.getPlacements();
             if (placements.length) {
                 const floor = {
-                    width:  parseFloat(document.getElementById('cfg-floor-w').value) || 400,
-                    depth:  parseFloat(document.getElementById('cfg-floor-d').value) || 300,
+                    width: parseFloat(document.getElementById('cfg-floor-w').value) || 400,
+                    depth: parseFloat(document.getElementById('cfg-floor-d').value) || 300,
                 };
                 this._scene.loadLayout(placements, this._loadedRacks, {
                     ...this._settings(),
@@ -1261,16 +1325,16 @@ class AppController {
         const theme = this._root.getAttribute('data-theme') || 'dark';
         return {
             theme,
-            scale:     document.querySelector('input[name="scale"]:checked')?.value || '1',
-            depth:     document.querySelector('input[name="depth"]:checked')?.value || 'realistic',
-            labels:    document.querySelector('input[name="labels"]:checked')?.value || 'auto',
-            colorBy:   document.querySelector('input[name="colorby"]:checked')?.value || 'image',
+            scale: document.querySelector('input[name="scale"]:checked')?.value || '1',
+            depth: document.querySelector('input[name="depth"]:checked')?.value || 'realistic',
+            labels: document.querySelector('input[name="labels"]:checked')?.value || 'auto',
+            colorBy: document.querySelector('input[name="colorby"]:checked')?.value || 'image',
             showEmpty: document.querySelector('input[name="empty"]:checked')?.value === 'yes',
-            face:      document.querySelector('.r3d-face-btn.active')?.dataset.face || 'both',
-            railFL:    parseFloat(document.getElementById('cfg-rail-fl')?.value) || 2,
-            railFR:    parseFloat(document.getElementById('cfg-rail-fr')?.value) || 2,
-            railRL:    parseFloat(document.getElementById('cfg-rail-rl')?.value) || 2,
-            railRR:    parseFloat(document.getElementById('cfg-rail-rr')?.value) || 2,
+            face: document.querySelector('.r3d-face-btn.active')?.dataset.face || 'both',
+            railFL: parseFloat(document.getElementById('cfg-rail-fl')?.value) || 2,
+            railFR: parseFloat(document.getElementById('cfg-rail-fr')?.value) || 2,
+            railRL: parseFloat(document.getElementById('cfg-rail-rl')?.value) || 2,
+            railRR: parseFloat(document.getElementById('cfg-rail-rr')?.value) || 2,
         };
     }
 

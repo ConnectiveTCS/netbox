@@ -347,16 +347,17 @@
 
   /* ── Layout Manager overlay ──────────────────────────── */
   #rack3d-root {
-    --r3d-canvas-bg:   #0d1018;
+    --r3d-canvas-bg: #0d1018;
     --r3d-canvas-grid: #1a2030;
-    --r3d-rack-fill:   #1e2d42;
-    --r3d-rack-sel:    #1a3a6a;
+    --r3d-rack-fill: #1e2d42;
+    --r3d-rack-sel: #1a3a6a;
   }
+
   #rack3d-root[data-theme="light"] {
-    --r3d-canvas-bg:   #dde4ef;
+    --r3d-canvas-bg: #dde4ef;
     --r3d-canvas-grid: #c8d0e0;
-    --r3d-rack-fill:   #c8daf5;
-    --r3d-rack-sel:    #93c5fd;
+    --r3d-rack-fill: #c8daf5;
+    --r3d-rack-sel: #93c5fd;
   }
 
   #r3d-layout-panel {
@@ -367,7 +368,10 @@
     display: flex;
     flex-direction: column;
   }
-  #r3d-layout-panel.r3d-layout-hidden { display: none; }
+
+  #r3d-layout-panel.r3d-layout-hidden {
+    display: none;
+  }
 
   #r3d-layout-header {
     display: flex;
@@ -378,10 +382,24 @@
     border-bottom: 1px solid var(--r3d-border);
     flex-shrink: 0;
   }
-  #r3d-layout-header > span { font-size: 14px; font-weight: 600; color: var(--r3d-text); }
-  .r3d-layout-actions { display: flex; gap: 6px; align-items: center; }
 
-  #r3d-layout-body { flex: 1; display: flex; overflow: hidden; }
+  #r3d-layout-header>span {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--r3d-text);
+  }
+
+  .r3d-layout-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  #r3d-layout-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
 
   /* Sidebar */
   #r3d-layout-sidebar {
@@ -393,6 +411,7 @@
     flex-direction: column;
     overflow: hidden;
   }
+
   .r3d-lsb-section {
     padding: 10px 12px;
     border-bottom: 1px solid var(--r3d-border);
@@ -400,6 +419,7 @@
     flex-direction: column;
     gap: 8px;
   }
+
   .r3d-lsb-section h4 {
     margin: 0;
     font-size: 11px;
@@ -408,9 +428,21 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
-  .r3d-field { display: flex; align-items: center; gap: 6px; }
-  .r3d-field label { font-size: 11px; color: var(--r3d-text-dim); min-width: 70px; }
-  .r3d-field input, .r3d-field select {
+
+  .r3d-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .r3d-field label {
+    font-size: 11px;
+    color: var(--r3d-text-dim);
+    min-width: 70px;
+  }
+
+  .r3d-field input,
+  .r3d-field select {
     flex: 1;
     background: var(--r3d-input-bg);
     color: var(--r3d-text);
@@ -419,7 +451,12 @@
     padding: 3px 6px;
     font-size: 12px;
   }
-  .r3d-field input:focus, .r3d-field select:focus { border-color: var(--r3d-accent); outline: none; }
+
+  .r3d-field input:focus,
+  .r3d-field select:focus {
+    border-color: var(--r3d-accent);
+    outline: none;
+  }
 
   #r3d-unplaced-wrap {
     flex: 1;
@@ -429,6 +466,7 @@
     flex-direction: column;
     gap: 4px;
   }
+
   .r3d-unplaced-rack {
     padding: 5px 8px;
     border-radius: 4px;
@@ -442,8 +480,15 @@
     text-overflow: ellipsis;
     user-select: none;
   }
-  .r3d-unplaced-rack:hover { border-color: var(--r3d-accent); background: var(--r3d-hover); }
-  .r3d-unplaced-rack.dragging { opacity: 0.5; }
+
+  .r3d-unplaced-rack:hover {
+    border-color: var(--r3d-accent);
+    background: var(--r3d-hover);
+  }
+
+  .r3d-unplaced-rack.dragging {
+    opacity: 0.5;
+  }
 
   /* Canvas area */
   #r3d-canvas-wrap {
@@ -456,6 +501,7 @@
     gap: 12px;
     background: var(--r3d-bg);
   }
+
   #r3d-floor-canvas {
     display: block;
     cursor: crosshair;
@@ -463,9 +509,10 @@
     border-radius: 4px;
     flex-shrink: 0;
   }
+
   #r3d-floor-canvas.drag-over {
     border-color: var(--r3d-accent);
-    box-shadow: 0 0 0 2px rgba(74,158,255,0.3);
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.3);
   }
 
   /* Properties panel */
@@ -481,7 +528,11 @@
     gap: 10px;
     align-self: flex-start;
   }
-  #r3d-rack-props.r3d-props-hidden { display: none; }
+
+  #r3d-rack-props.r3d-props-hidden {
+    display: none;
+  }
+
   #r3d-rack-props h4 {
     margin: 0;
     font-size: 12px;
@@ -491,9 +542,22 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .r3d-prop-row { display: flex; flex-direction: column; gap: 3px; }
-  .r3d-prop-row label { font-size: 10px; color: var(--r3d-text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
-  .r3d-prop-row input, .r3d-prop-row select {
+
+  .r3d-prop-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .r3d-prop-row label {
+    font-size: 10px;
+    color: var(--r3d-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .r3d-prop-row input,
+  .r3d-prop-row select {
     background: var(--r3d-input-bg);
     color: var(--r3d-text);
     border: 1px solid var(--r3d-border);
@@ -502,18 +566,27 @@
     font-size: 12px;
     width: 100%;
   }
-  .r3d-prop-row input:focus, .r3d-prop-row select:focus { border-color: var(--r3d-accent); outline: none; }
+
+  .r3d-prop-row input:focus,
+  .r3d-prop-row select:focus {
+    border-color: var(--r3d-accent);
+    outline: none;
+  }
+
   #btn-prop-remove {
-    background: rgba(231,76,60,0.1);
+    background: rgba(231, 76, 60, 0.1);
     color: #e74c3c;
-    border: 1px solid rgba(231,76,60,0.3);
+    border: 1px solid rgba(231, 76, 60, 0.3);
     border-radius: 4px;
     padding: 4px;
     font-size: 11px;
     cursor: pointer;
     margin-top: 4px;
   }
-  #btn-prop-remove:hover { background: rgba(231,76,60,0.2); }
+
+  #btn-prop-remove:hover {
+    background: rgba(231, 76, 60, 0.2);
+  }
 
   /* Context menu */
   #r3d-ctx-menu {
@@ -522,15 +595,36 @@
     background: var(--r3d-panel);
     border: 1px solid var(--r3d-border);
     border-radius: 5px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     min-width: 150px;
     overflow: hidden;
   }
-  #r3d-ctx-menu.r3d-ctx-hidden { display: none; }
-  .r3d-ctx-item { padding: 7px 14px; font-size: 12px; color: var(--r3d-text); cursor: pointer; }
-  .r3d-ctx-item:hover { background: var(--r3d-hover); color: var(--r3d-accent); }
-  .r3d-ctx-item.danger:hover { color: #e74c3c; }
-  .r3d-ctx-sep { border: none; border-top: 1px solid var(--r3d-border); margin: 2px 0; }
+
+  #r3d-ctx-menu.r3d-ctx-hidden {
+    display: none;
+  }
+
+  .r3d-ctx-item {
+    padding: 7px 14px;
+    font-size: 12px;
+    color: var(--r3d-text);
+    cursor: pointer;
+  }
+
+  .r3d-ctx-item:hover {
+    background: var(--r3d-hover);
+    color: var(--r3d-accent);
+  }
+
+  .r3d-ctx-item.danger:hover {
+    color: #e74c3c;
+  }
+
+  .r3d-ctx-sep {
+    border: none;
+    border-top: 1px solid var(--r3d-border);
+    margin: 2px 0;
+  }
 
   /* Save toast */
   #r3d-save-toast {
@@ -550,7 +644,10 @@
     z-index: 300;
     white-space: nowrap;
   }
-  #r3d-save-toast.visible { opacity: 1; }
+
+  #r3d-save-toast.visible {
+    opacity: 1;
+  }
 
   /* ── Device info panel ───────────────────────────────── */
   #r3d-info {
@@ -787,7 +884,7 @@
       <span><i class="mdi mdi-floor-plan"></i>&nbsp;Floor Plan Editor</span>
       <div class="r3d-layout-actions">
         <span id="r3d-save-status" style="font-size:11px;color:var(--r3d-text-dim);margin-right:4px"></span>
-        <button id="btn-layout-save"  class="r3d-btn active-btn">💾 Save Layout</button>
+        <button id="btn-layout-save" class="r3d-btn active-btn">💾 Save Layout</button>
         <button id="btn-layout-apply" class="r3d-btn">▶ Render 3D</button>
         <button id="btn-layout-close" class="r3d-btn">✕ Close</button>
       </div>
@@ -838,7 +935,7 @@
           <div class="r3d-field">
             <label>Depth</label>
             <input type="number" id="cfg-rack-depth" min="10" max="200" step="2" value="40"
-                   title="Rack footprint depth in floor units (e.g. inches)">
+              title="Rack footprint depth in floor units (e.g. inches)">
           </div>
         </div>
 
