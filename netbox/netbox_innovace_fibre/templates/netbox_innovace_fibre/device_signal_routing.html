@@ -75,7 +75,8 @@
                 <div class="col-auto" style="max-width:100px;">
                     <label class="form-label mb-1">Signal</label>
                     {{ form.from_signal }}
-                    {% if form.from_signal.errors %}<div class="text-danger small">{{ form.from_signal.errors }}</div>{% endif %}
+                    {% if form.from_signal.errors %}<div class="text-danger small">{{ form.from_signal.errors }}</div>{%
+                    endif %}
                 </div>
                 <div class="col-auto">
                     <label class="form-label mb-1">To Port</label>
@@ -86,7 +87,8 @@
                 <div class="col-auto" style="max-width:100px;">
                     <label class="form-label mb-1">Signal</label>
                     {{ form.to_signal }}
-                    {% if form.to_signal.errors %}<div class="text-danger small">{{ form.to_signal.errors }}</div>{% endif %}
+                    {% if form.to_signal.errors %}<div class="text-danger small">{{ form.to_signal.errors }}</div>{%
+                    endif %}
                 </div>
                 <div class="col-auto">
                     <label class="form-label mb-1">Bidirectional</label><br>
