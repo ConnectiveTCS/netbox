@@ -732,28 +732,53 @@
 
   /* ── CSS2D device labels ─────────────────────────────── */
   .r3d-device-label {
-    background: rgba(10, 12, 16, 0.82);
-    color: #c9d1e0;
+    background: rgba(255, 255, 255, 0.92);
+    color: #1a1a2e;
     font-size: 10px;
     font-family: monospace;
     padding: 2px 5px;
     border-radius: 3px;
-    border: 1px solid #2a3045;
+    border: 1px solid #bcc5d4;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
     white-space: nowrap;
     pointer-events: none;
     user-select: none;
   }
 
-  #rack3d-root[data-theme="light"] .r3d-device-label {
-    background: rgba(240, 242, 245, 0.9);
+  #rack3d-root[data-theme="dark"] .r3d-device-label {
+    background: rgba(10, 12, 16, 0.88);
+    color: #c9d1e0;
+    border-color: #2a3045;
+    box-shadow: none;
+  }
+
+  /* ── CSS2D rack name labels (floor plan view) ────────── */
+  .r3d-rack-label {
+    background: rgba(255, 255, 255, 0.95);
     color: #1a1a2e;
-    border-color: #c8d0e0;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: system-ui, sans-serif;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid #bcc5d4;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.22);
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  #rack3d-root[data-theme="dark"] .r3d-rack-label {
+    background: rgba(18, 22, 34, 0.92);
+    color: #c9d1e0;
+    border-color: #2a3550;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
   }
 </style>
 {% endblock head %}
 
 {% block page %}
-<div id="rack3d-root" data-theme="dark">
+<div id="rack3d-root" data-theme="light">
 
   {# ── Toolbar ─────────────────────────────────────────── #}
   <div id="r3d-toolbar">

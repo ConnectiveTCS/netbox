@@ -13,6 +13,8 @@ const LABEL_SHOW_DIST = 60;
 const LS_SETTINGS = 'iff_rack3d_settings';
 
 const DEPTH_MAP = { realistic: 28.0, flat: 4.0, schematic: 1.2 };
+const FAN_ZONE_H = 3.5;      // height of fan module added above device area
+const FAN_ZONE_OFFSET = 2.0; // air gap between top device and fan tray
 
 function hashColor(str) {
     let h = 0x811c9dc5;
@@ -30,11 +32,23 @@ function roleColorInt(hex) { return parseInt(hex, 16) || 0x555555; }
 
 function themeColors(theme) {
     return theme === 'light' ? {
-        sceneBg: 0xf0f2f5, floor: 0xe2e8f0, floorLine: 0xc8d0dc,
-        post: 0x8899aa, blank: 0xd0d8e4, side: 0x6688aa, deviceDark: 0xdde3eb,
+        sceneBg: 0xf2f4f8,  // near-white background
+        floor: 0xc2c8d4,  // tile surface
+        floorLine: 0x909aaa,  // grout lines
+        post: 0x18191e,  // near-black frame posts
+        // blank: 0xdde2ea,  // blank panel fill
+        side: 0x18191e,  // hidden behind cabinet body
+        deviceDark: 0x0e1014,  // equipment face (very dark)
+        rackBody: 0x5ab84c,  // green cabinet body
     } : {
-        sceneBg: 0x0A0C10, floor: 0x0c0f14, floorLine: 0x182030,
-        post: 0x2a2e3a, blank: 0x1e2330, side: 0x3a4a5a, deviceDark: 0x1a1e26,
+        sceneBg: 0x0A0C10,
+        floor: 0x0c0f14,
+        floorLine: 0x131820,
+        post: 0x2a2e3a,
+        // blank:      0x1e2330,
+        side: 0x3a4a5a,
+        deviceDark: 0x1a1e26,
+        rackBody: 0x2d5a28,  // dark green cabinet body
     };
 }
 
@@ -57,7 +71,7 @@ class RackScene {
         this._labels = [];
         this._textures = [];
         this._animId = null;
-        this._settings = { theme: 'dark', labels: 'auto' };
+        this._settings = { theme: 'light', labels: 'auto' };
 
         this._renderer = new THREE.WebGLRenderer({ antialias: true });
         this._renderer.setPixelRatio(window.devicePixelRatio);
@@ -76,18 +90,25 @@ class RackScene {
         container.appendChild(this._css2d.domElement);
 
         this._scene = new THREE.Scene();
-        this._scene.background = new THREE.Color(0x0A0C10);
+        this._scene.background = new THREE.Color(0xf2f4f8);
 
         const { width, height } = container.getBoundingClientRect();
         this._camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
 
-        this._scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-        const dir = new THREE.DirectionalLight(0xffffff, 1.1);
-        dir.position.set(15, 25, 20);
+        // Ambient: soft fill so shadows aren't pitch black
+        this._scene.add(new THREE.AmbientLight(0xffffff, 0.50));
+        // Key light: top-front-right to illuminate the green rack faces
+        const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+        dir.position.set(20, 45, 30);
         this._scene.add(dir);
-        const fill = new THREE.DirectionalLight(0x8899bb, 0.3);
-        fill.position.set(-10, 5, -15);
+        // Fill light: left rear to soften shadows
+        const fill = new THREE.DirectionalLight(0xd8ecff, 0.50);
+        fill.position.set(-20, 8, -25);
         this._scene.add(fill);
+        // Top rim light: brightens the top edges of racks
+        const rim = new THREE.DirectionalLight(0xffffff, 0.25);
+        rim.position.set(0, -8, -12);
+        this._scene.add(rim);
 
         this._controls = new OrbitControls(this._camera, this._renderer.domElement);
         this._controls.enableDamping = true;
@@ -162,6 +183,17 @@ class RackScene {
             this._buildRackFrame(rd.rack, settings, zero, group);
             this._buildDevices(rd.devices, rd.rack, settings, zero, group);
             if (settings.showEmpty) this._buildEmptySlots(rd, settings, zero, group);
+
+            // Rack name label floating above the cabinet
+            const rackSc = parseFloat(settings.scale) || 1;
+            const rackTop = rd.rack.u_height * U_SCALE_BASE * rackSc + (FAN_ZONE_OFFSET + FAN_ZONE_H) * rackSc + 2.0;
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'r3d-rack-label';
+            nameDiv.textContent = rd.rack.name;
+            const rackLabel = new CSS2DObject(nameDiv);
+            rackLabel.position.set(0, rackTop, 0);
+            group.add(rackLabel);
+            this._labels.push(rackLabel);
         }
 
         this.fitView();
@@ -180,10 +212,11 @@ class RackScene {
     resetCamera(rack, settings) {
         const sc = parseFloat(settings.scale) || 1;
         const totalH = rack.u_height * U_SCALE_BASE * sc;
+        const extH = totalH + (FAN_ZONE_OFFSET + FAN_ZONE_H) * sc;
         const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
-        const target = new THREE.Vector3(0, totalH * 0.5, 0);
-        const dist = Math.max(totalH, RACK_WIDTH) * 1.6 + depth;
-        this._camera.position.set(RACK_WIDTH * 0.8, totalH * 0.55, dist);
+        const target = new THREE.Vector3(0, extH * 0.5, 0);
+        const dist = Math.max(extH, RACK_WIDTH) * 1.6 + depth;
+        this._camera.position.set(RACK_WIDTH * 0.8, extH * 0.55, dist);
         this._camera.lookAt(target);
         this._controls.target.copy(target);
         this._controls.update();
@@ -222,40 +255,69 @@ class RackScene {
     // ── Private: scene building ───────────────────────────────────────────────
 
     _buildFloor(w, d, settings) {
-        const colors = themeColors(settings.theme);
-        const floorMat = new THREE.MeshStandardMaterial({
-            color: colors.floor, roughness: 0.9, metalness: 0,
-        });
-        const floorGeo = new THREE.PlaneGeometry(w + 20, d + 20);
+        const isLight = settings.theme === 'light';
+        const fw = w + 40;
+        const fd = d + 40;
+
+        // Build a canvas texture that looks like raised data-center floor tiles
+        // (24" × 24" standard tiles with darker grout lines and edge highlights)
+        const tilePx = 128;
+        const groutPx = 2;
+        const c = document.createElement('canvas');
+        c.width = tilePx; c.height = tilePx;
+        const tc = c.getContext('2d');
+
+        // Grout fill
+        tc.fillStyle = isLight ? '#8e98a8' : '#0e1318';
+        tc.fillRect(0, 0, tilePx, tilePx);
+        // Tile face
+        tc.fillStyle = isLight ? '#c0c8d6' : '#0d1219';
+        tc.fillRect(groutPx, groutPx, tilePx - groutPx * 2, tilePx - groutPx * 2);
+        // Top-left highlight (raised edge)
+        tc.fillStyle = isLight ? '#d4dbe7' : '#14191f';
+        tc.fillRect(groutPx, groutPx, tilePx - groutPx * 2, 4);
+        tc.fillRect(groutPx, groutPx, 4, tilePx - groutPx * 2);
+        // Bottom-right shadow
+        tc.fillStyle = isLight ? '#a8b2c0' : '#090c10';
+        tc.fillRect(groutPx, tilePx - groutPx - 4, tilePx - groutPx * 2, 4);
+        tc.fillRect(tilePx - groutPx - 4, groutPx, 4, tilePx - groutPx * 2);
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(fw / 24, fd / 24);   // 24" standard tile pitch
+        tex.colorSpace = THREE.SRGBColorSpace;
+        this._textures.push(tex);
+
+        const floorMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.04 });
+        const floorGeo = new THREE.PlaneGeometry(fw, fd);
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(0, -0.05, 0);
         this._scene.add(floor);
         this._meshes.push(floor);
-
-        const lineMat = new THREE.LineBasicMaterial({ color: colors.floorLine });
-        const pts = [];
-        const hw = (w + 20) / 2, hd = (d + 20) / 2;
-        const step = 10;
-        for (let x = -hw; x <= hw; x += step) {
-            pts.push(new THREE.Vector3(x, 0, -hd), new THREE.Vector3(x, 0, hd));
-        }
-        for (let z = -hd; z <= hd; z += step) {
-            pts.push(new THREE.Vector3(-hw, 0, z), new THREE.Vector3(hw, 0, z));
-        }
-        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
-        const lines = new THREE.LineSegments(lineGeo, lineMat);
-        this._scene.add(lines);
-        this._meshes.push(lines);
     }
 
     _buildRackFrame(rack, settings, offset, parent) {
         const target = parent || this._scene;
         const sc = parseFloat(settings.scale) || 1;
         const totalH = rack.u_height * U_SCALE_BASE * sc;
+        const extH = totalH + (FAN_ZONE_OFFSET + FAN_ZONE_H) * sc;
         const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
         const colors = themeColors(settings.theme);
         const mat = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.75, roughness: 0.35 });
+
+        // ── Solid cabinet body ───────────────────────────────────────────────
+        // Six-face material array: [+X, -X, +Y, -Y, +Z(front), -Z(back)]
+        const bodyMat = new THREE.MeshStandardMaterial({ color: colors.rackBody, metalness: 0.12, roughness: 0.65 });
+        const topMat = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.65, roughness: 0.40 });
+        const invisMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0 });
+        const cabinetMats = [bodyMat, bodyMat, topMat, bodyMat, invisMat, invisMat];
+        const cabinetGeo = new THREE.BoxGeometry(RACK_WIDTH, extH, depth);
+        const cabinet = new THREE.Mesh(cabinetGeo, cabinetMats);
+        cabinet.position.set(offset.x, offset.y + extH / 2, offset.z);
+        target.add(cabinet);
+        if (!parent) this._meshes.push(cabinet);
 
         const railFL = Math.max(0.5, parseFloat(settings.railFL) || 2);
         const railFR = Math.max(0.5, parseFloat(settings.railFR) || 2);
@@ -271,10 +333,10 @@ class RackScene {
             { sx: 1, zSign: 1, rd: railRR },
         ];
         for (const { sx, zSign, rd } of corners) {
-            const postGeo = new THREE.BoxGeometry(POST_W, totalH, rd);
+            const postGeo = new THREE.BoxGeometry(POST_W, extH, rd);
             const zPos = zSign * (depth / 2 + rd / 2);
             const m = new THREE.Mesh(postGeo, mat);
-            m.position.set(offset.x + sx * hw, offset.y + totalH / 2, offset.z + zPos);
+            m.position.set(offset.x + sx * hw, offset.y + extH / 2, offset.z + zPos);
             target.add(m);
             if (!parent) this._meshes.push(m);
         }
@@ -284,9 +346,16 @@ class RackScene {
         const railSpan = depth + frontExt + rearExt;
         const railZOff = (rearExt - frontExt) / 2;
         const railGeo = new THREE.BoxGeometry(RACK_WIDTH + POST_W * 2 + 0.1, RAIL_H, railSpan);
-        for (const y of [0, totalH]) {
+        for (const y of [0, extH]) {
             const m = new THREE.Mesh(railGeo, mat);
             m.position.set(offset.x, offset.y + y, offset.z + railZOff);
+            target.add(m);
+            if (!parent) this._meshes.push(m);
+        }
+        // Divider rail at the boundary between device area and fan zone
+        {
+            const m = new THREE.Mesh(railGeo, mat);
+            m.position.set(offset.x, offset.y + totalH, offset.z + railZOff);
             target.add(m);
             if (!parent) this._meshes.push(m);
         }
@@ -294,13 +363,80 @@ class RackScene {
         const sideMat = new THREE.MeshStandardMaterial({
             color: colors.side, transparent: true, opacity: 0.06, side: THREE.DoubleSide,
         });
-        const sideGeo = new THREE.PlaneGeometry(railSpan, totalH);
+        const sideGeo = new THREE.PlaneGeometry(railSpan, extH);
         for (const sx of [-1, 1]) {
             const m = new THREE.Mesh(sideGeo, sideMat);
             m.rotation.y = Math.PI / 2;
-            m.position.set(offset.x + sx * (RACK_WIDTH / 2 + POST_W), offset.y + totalH / 2, offset.z + railZOff);
+            m.position.set(offset.x + sx * (RACK_WIDTH / 2 + POST_W), offset.y + extH / 2, offset.z + railZOff);
             target.add(m);
             if (!parent) this._meshes.push(m);
+        }
+
+        this._buildFans(totalH, depth, settings, offset, parent);
+    }
+
+    _buildFans(totalH, depth, settings, offset, parent) {
+        const target = parent || this._scene;
+        const sc = parseFloat(settings.scale) || 1;
+        const fanZoneH = FAN_ZONE_H * sc;
+        const fanZoneOff = FAN_ZONE_OFFSET * sc;
+        const fanY = offset.y + totalH + fanZoneOff + fanZoneH / 2;
+        const fz = offset.z + depth / 2 - 0.5;
+        const add = m => { target.add(m); if (!parent) this._meshes.push(m); };
+
+        // Fan tray backing plate (set back inside the rack)
+        const trayMat = new THREE.MeshStandardMaterial({ color: 0x0c0f14, metalness: 0.5, roughness: 0.7 });
+        const tray = new THREE.Mesh(
+            new THREE.BoxGeometry(RACK_WIDTH - POST_W * 2 - 0.2, fanZoneH - 0.3, depth * 0.18),
+            trayMat
+        );
+        tray.position.set(offset.x, fanY, offset.z + depth / 2 - depth * 0.09 - 0.6);
+        add(tray);
+
+        const fanCount = 4;
+        const availW = RACK_WIDTH - POST_W * 2 - 1.0;
+        const spacing = availW / fanCount;
+        const fanR = Math.min(fanZoneH / 2 - 0.2, spacing / 2 - 0.3);
+
+        const ringMat  = new THREE.MeshStandardMaterial({ color: 0x1c2030, metalness: 0.70, roughness: 0.30 });
+        const bladeMat = new THREE.MeshStandardMaterial({ color: 0x38404e, metalness: 0.50, roughness: 0.60 });
+        const discMat  = new THREE.MeshStandardMaterial({ color: 0x080b0f, metalness: 0.30, roughness: 0.80 });
+        const hubMat   = new THREE.MeshStandardMaterial({ color: 0x888ea0, metalness: 0.85, roughness: 0.15 });
+
+        for (let i = 0; i < fanCount; i++) {
+            const fx = offset.x - availW / 2 + spacing * (i + 0.5);
+
+            // Torus ring — default XY plane faces +Z (camera side)
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(fanR, 0.11, 8, 32), ringMat);
+            ring.position.set(fx, fanY, fz);
+            add(ring);
+
+            // Dark disc behind the blades
+            const disc = new THREE.Mesh(
+                new THREE.CylinderGeometry(fanR - 0.12, fanR - 0.12, 0.06, 32), discMat);
+            disc.rotation.x = Math.PI / 2;
+            disc.position.set(fx, fanY, fz - 0.05);
+            add(disc);
+
+            // 7 swept blades arranged radially
+            for (let b = 0; b < 7; b++) {
+                const angle = (b / 7) * Math.PI * 2;
+                const blade = new THREE.Mesh(
+                    new THREE.BoxGeometry(fanR * 0.62, fanR * 0.20, 0.04), bladeMat);
+                blade.rotation.z = angle + 0.35;
+                blade.position.set(
+                    fx + Math.cos(angle) * fanR * 0.40,
+                    fanY + Math.sin(angle) * fanR * 0.40,
+                    fz);
+                add(blade);
+            }
+
+            // Centre hub
+            const hub = new THREE.Mesh(
+                new THREE.CylinderGeometry(fanR * 0.13, fanR * 0.13, 0.18, 16), hubMat);
+            hub.rotation.x = Math.PI / 2;
+            hub.position.set(fx, fanY, fz + 0.08);
+            add(hub);
         }
     }
 
@@ -858,7 +994,8 @@ class AppController {
     _restoreSettings() {
         try {
             const s = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
-            if (s.theme) this._root.setAttribute('data-theme', s.theme);
+            // Default to light theme if no saved preference
+            this._root.setAttribute('data-theme', s.theme || 'light');
             if (s.scale) document.querySelector(`input[name="scale"][value="${s.scale}"]`)?.click();
             if (s.depth) document.querySelector(`input[name="depth"][value="${s.depth}"]`)?.click();
             if (s.labels) document.querySelector(`input[name="labels"][value="${s.labels}"]`)?.click();
