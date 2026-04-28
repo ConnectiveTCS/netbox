@@ -14,385 +14,645 @@
 }
 </script>
 <style>
-/* ── Theme variables ───────────────────────────────── */
-#rack3d-root {
-  --r3d-bg:        #0A0C10;
-  --r3d-panel:     #12151c;
-  --r3d-border:    #1e2330;
-  --r3d-text:      #c9d1e0;
-  --r3d-text-dim:  #5c6880;
-  --r3d-accent:    #4a9eff;
-  --r3d-input-bg:  #1a1e2a;
-  --r3d-hover:     #252c40;
-  --r3d-btn-bg:    #1a1e2a;
-}
-#rack3d-root[data-theme="light"] {
-  --r3d-bg:        #f0f2f5;
-  --r3d-panel:     #ffffff;
-  --r3d-border:    #d1d9e6;
-  --r3d-text:      #1a1a2e;
-  --r3d-text-dim:  #64748b;
-  --r3d-accent:    #2563eb;
-  --r3d-input-bg:  #f8fafc;
-  --r3d-hover:     #e2e8f0;
-  --r3d-btn-bg:    #f0f4fa;
-}
+  /* ── Theme variables ───────────────────────────────── */
+  #rack3d-root {
+    --r3d-bg: #0A0C10;
+    --r3d-panel: #12151c;
+    --r3d-border: #1e2330;
+    --r3d-text: #c9d1e0;
+    --r3d-text-dim: #5c6880;
+    --r3d-accent: #4a9eff;
+    --r3d-input-bg: #1a1e2a;
+    --r3d-hover: #252c40;
+    --r3d-btn-bg: #1a1e2a;
+  }
 
-/* ── Layout ─────────────────────────────────────────── */
-#rack3d-root {
-  height: calc(100vh - 3.5rem);
-  display: flex;
-  flex-direction: column;
-  background: var(--r3d-bg);
-  overflow: hidden;
-  color: var(--r3d-text);
-  position: relative;
-}
+  #rack3d-root[data-theme="light"] {
+    --r3d-bg: #f0f2f5;
+    --r3d-panel: #ffffff;
+    --r3d-border: #d1d9e6;
+    --r3d-text: #1a1a2e;
+    --r3d-text-dim: #64748b;
+    --r3d-accent: #2563eb;
+    --r3d-input-bg: #f8fafc;
+    --r3d-hover: #e2e8f0;
+    --r3d-btn-bg: #f0f4fa;
+  }
 
-/* ── Toolbar ─────────────────────────────────────────── */
-#r3d-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 14px;
-  background: var(--r3d-panel);
-  border-bottom: 1px solid var(--r3d-border);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
+  /* ── Layout ─────────────────────────────────────────── */
+  #rack3d-root {
+    height: calc(100vh - 3.5rem);
+    display: flex;
+    flex-direction: column;
+    background: var(--r3d-bg);
+    overflow: hidden;
+    color: var(--r3d-text);
+    position: relative;
+  }
 
-#r3d-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--r3d-text);
-  white-space: nowrap;
-  margin-right: 6px;
-}
+  /* ── Toolbar ─────────────────────────────────────────── */
+  #r3d-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    background: var(--r3d-panel);
+    border-bottom: 1px solid var(--r3d-border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
 
-#r3d-filters {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
+  #r3d-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--r3d-text);
+    white-space: nowrap;
+    margin-right: 6px;
+  }
 
-#r3d-filters select {
-  background: var(--r3d-input-bg);
-  color: var(--r3d-text);
-  border: 1px solid var(--r3d-border);
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 12px;
-  outline: none;
-  min-width: 140px;
-}
-#r3d-filters select:focus { border-color: var(--r3d-accent); }
+  #r3d-filters {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
 
-#r3d-face-toggle {
-  display: flex;
-  border: 1px solid var(--r3d-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
+  #r3d-filters select {
+    background: var(--r3d-input-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    outline: none;
+    min-width: 140px;
+  }
 
-.r3d-face-btn {
-  background: var(--r3d-btn-bg);
-  color: var(--r3d-text);
-  border: none;
-  padding: 3px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.r3d-face-btn + .r3d-face-btn { border-left: 1px solid var(--r3d-border); }
-.r3d-face-btn:hover  { background: var(--r3d-hover); }
-.r3d-face-btn.active { background: var(--r3d-accent); color: #fff; }
+  #r3d-filters select:focus {
+    border-color: var(--r3d-accent);
+  }
 
-#r3d-controls {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-  flex-wrap: wrap;
-}
+  #r3d-face-toggle {
+    display: flex;
+    border: 1px solid var(--r3d-border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
 
-.r3d-btn {
-  background: var(--r3d-btn-bg);
-  color: var(--r3d-text);
-  border: 1px solid var(--r3d-border);
-  border-radius: 4px;
-  padding: 3px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-  white-space: nowrap;
-}
-.r3d-btn:hover { background: var(--r3d-hover); border-color: var(--r3d-accent); }
-.r3d-btn.active-btn { background: var(--r3d-accent); color: #fff; border-color: var(--r3d-accent); }
+  .r3d-face-btn {
+    background: var(--r3d-btn-bg);
+    color: var(--r3d-text);
+    border: none;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
 
-/* ── Content row ─────────────────────────────────────── */
-#r3d-content {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  position: relative;
-}
+  .r3d-face-btn+.r3d-face-btn {
+    border-left: 1px solid var(--r3d-border);
+  }
 
-/* ── 3D Viewport ─────────────────────────────────────── */
-#r3d-viewport {
-  flex: 1;
-  position: relative;
-  overflow: hidden;
-}
-#r3d-viewport canvas { display: block; width: 100% !important; height: 100% !important; }
-#r3d-viewport .css2d-renderer {
-  position: absolute !important; top: 0; left: 0;
-  width: 100% !important; height: 100% !important;
-  pointer-events: none;
-}
+  .r3d-face-btn:hover {
+    background: var(--r3d-hover);
+  }
 
-/* ── Loading / empty states ──────────────────────────── */
-#r3d-loading {
-  position: absolute; inset: 0; display: none;
-  flex-direction: column; align-items: center; justify-content: center;
-  gap: 14px; color: var(--r3d-text-dim); font-size: 14px;
-  pointer-events: none; z-index: 10;
-}
-.r3d-spinner {
-  width: 36px; height: 36px;
-  border: 3px solid var(--r3d-border);
-  border-top-color: var(--r3d-accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+  .r3d-face-btn.active {
+    background: var(--r3d-accent);
+    color: #fff;
+  }
 
-#r3d-empty {
-  position: absolute; inset: 0; display: flex;
-  align-items: center; justify-content: center;
-  color: var(--r3d-text-dim); font-size: 14px; pointer-events: none;
-}
+  #r3d-controls {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
 
-/* ── Config sidebar ──────────────────────────────────── */
-#r3d-config {
-  width: 230px; flex-shrink: 0;
-  background: var(--r3d-panel);
-  border-left: 1px solid var(--r3d-border);
-  overflow-y: auto;
-  display: flex; flex-direction: column;
-  transition: width 0.2s, opacity 0.2s;
-}
-#r3d-config.r3d-config-hidden { width: 0; opacity: 0; pointer-events: none; overflow: hidden; }
+  .r3d-btn {
+    background: var(--r3d-btn-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
 
-.r3d-config-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid var(--r3d-border);
-  font-size: 13px; font-weight: 600; color: var(--r3d-text);
-  flex-shrink: 0;
-}
-.r3d-config-header button {
-  background: none; border: none; color: var(--r3d-text-dim);
-  cursor: pointer; font-size: 14px; padding: 0; line-height: 1;
-}
-.r3d-config-header button:hover { color: var(--r3d-text); }
+  .r3d-btn:hover {
+    background: var(--r3d-hover);
+    border-color: var(--r3d-accent);
+  }
 
-.r3d-config-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 14px; }
+  .r3d-btn.active-btn {
+    background: var(--r3d-accent);
+    color: #fff;
+    border-color: var(--r3d-accent);
+  }
 
-.r3d-config-section { display: flex; flex-direction: column; gap: 5px; }
-.r3d-config-label {
-  font-size: 11px; font-weight: 600; color: var(--r3d-text-dim);
-  text-transform: uppercase; letter-spacing: 0.04em;
-}
+  /* ── Content row ─────────────────────────────────────── */
+  #r3d-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
 
-.r3d-radio-group { display: flex; flex-direction: column; gap: 4px; }
-.r3d-radio-group label {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--r3d-text); cursor: pointer;
-}
-.r3d-radio-group input[type="radio"] { accent-color: var(--r3d-accent); cursor: pointer; }
+  /* ── 3D Viewport ─────────────────────────────────────── */
+  #r3d-viewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
 
-/* Rail depth 2-column grid */
-.r3d-rail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 8px;
-}
-.r3d-rail-grid label {
-  display: flex; flex-direction: column; gap: 2px;
-  font-size: 11px; color: var(--r3d-text-dim);
-}
-.r3d-rail-grid input {
-  background: var(--r3d-input-bg); color: var(--r3d-text);
-  border: 1px solid var(--r3d-border); border-radius: 3px;
-  padding: 3px 5px; font-size: 12px; width: 100%;
-}
-.r3d-rail-grid input:focus { border-color: var(--r3d-accent); outline: none; }
+  #r3d-viewport canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
 
-.r3d-config-divider {
-  border: none; border-top: 1px solid var(--r3d-border); margin: 0;
-}
+  #r3d-viewport .css2d-renderer {
+    position: absolute !important;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none;
+  }
 
-/* ── Layout Manager overlay ──────────────────────────── */
-#r3d-layout-panel {
-  position: absolute; inset: 0; z-index: 200;
-  background: var(--r3d-bg);
-  display: flex; flex-direction: column;
-  transition: opacity 0.2s;
-}
-#r3d-layout-panel.r3d-layout-hidden { display: none; }
+  /* ── Loading / empty states ──────────────────────────── */
+  #r3d-loading {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: var(--r3d-text-dim);
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 10;
+  }
 
-#r3d-layout-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px;
-  background: var(--r3d-panel);
-  border-bottom: 1px solid var(--r3d-border);
-  flex-shrink: 0;
-}
-#r3d-layout-header span { font-size: 14px; font-weight: 600; color: var(--r3d-text); }
-#r3d-layout-header .r3d-header-actions { display: flex; gap: 8px; }
+  .r3d-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--r3d-border);
+    border-top-color: var(--r3d-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
 
-#r3d-layout-body {
-  flex: 1; display: flex; overflow: hidden;
-}
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
-/* Left: config + available racks */
-#r3d-layout-sidebar {
-  width: 240px; flex-shrink: 0;
-  background: var(--r3d-panel);
-  border-right: 1px solid var(--r3d-border);
-  display: flex; flex-direction: column;
-  overflow-y: auto;
-  padding: 12px;
-  gap: 14px;
-}
+  #r3d-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--r3d-text-dim);
+    font-size: 14px;
+    pointer-events: none;
+  }
 
-.r3d-layout-field {
-  display: flex; flex-direction: column; gap: 4px;
-}
-.r3d-layout-field label {
-  font-size: 11px; font-weight: 600; color: var(--r3d-text-dim);
-  text-transform: uppercase; letter-spacing: 0.04em;
-}
-.r3d-layout-field input {
-  background: var(--r3d-input-bg); color: var(--r3d-text);
-  border: 1px solid var(--r3d-border); border-radius: 4px;
-  padding: 4px 8px; font-size: 12px;
-}
-.r3d-layout-field input:focus { border-color: var(--r3d-accent); outline: none; }
+  /* ── Config sidebar ──────────────────────────────────── */
+  #r3d-config {
+    width: 230px;
+    flex-shrink: 0;
+    background: var(--r3d-panel);
+    border-left: 1px solid var(--r3d-border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.2s, opacity 0.2s;
+  }
 
-#r3d-layout-sidebar h4 {
-  margin: 0; font-size: 12px; font-weight: 600;
-  color: var(--r3d-text-dim); text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
+  #r3d-config.r3d-config-hidden {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
 
-#r3d-available-list {
-  display: flex; flex-direction: column; gap: 4px; overflow-y: auto;
-}
-.available-rack-chip {
-  padding: 5px 8px; border-radius: 4px; font-size: 11px;
-  background: var(--r3d-input-bg); color: var(--r3d-text);
-  border: 1px solid var(--r3d-border);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.available-rack-chip.placed { opacity: 0.4; }
+  .r3d-config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--r3d-border);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--r3d-text);
+    flex-shrink: 0;
+  }
 
-/* Right: floor grid */
-#r3d-layout-grid-wrap {
-  flex: 1; overflow: auto; padding: 16px;
-}
-#r3d-layout-grid-wrap h4 {
-  margin: 0 0 10px; font-size: 12px; font-weight: 600;
-  color: var(--r3d-text-dim); text-transform: uppercase; letter-spacing: 0.04em;
-}
+  .r3d-config-header button {
+    background: none;
+    border: none;
+    color: var(--r3d-text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    line-height: 1;
+  }
 
-#r3d-floor-grid {
-  display: grid; gap: 6px;
-}
+  .r3d-config-header button:hover {
+    color: var(--r3d-text);
+  }
 
-.layout-cell {
-  min-height: 56px; min-width: 110px;
-  border: 1px dashed var(--r3d-border);
-  border-radius: 5px;
-  display: flex; align-items: center; justify-content: center;
-  transition: border-color 0.15s;
-  overflow: hidden;
-}
-.layout-cell:hover { border-color: var(--r3d-accent); }
+  .r3d-config-body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
 
-.layout-cell-rack {
-  width: 100%; height: 100%; padding: 5px 8px;
-  background: rgba(74,158,255,0.1);
-  border-radius: 4px;
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 4px; min-height: 54px;
-}
-#rack3d-root[data-theme="light"] .layout-cell-rack { background: rgba(37,99,235,0.08); }
+  .r3d-config-section {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
 
-.layout-cell-rack span {
-  font-size: 11px; color: var(--r3d-text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
-}
-.layout-cell-remove {
-  flex-shrink: 0; background: none; border: none;
-  color: var(--r3d-text-dim); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px;
-}
-.layout-cell-remove:hover { color: #e74c3c; }
+  .r3d-config-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--r3d-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
 
-.layout-cell select {
-  background: transparent; color: var(--r3d-text-dim);
-  border: none; font-size: 12px; cursor: pointer; outline: none;
-  width: 100%; text-align: center;
-}
-.layout-cell select:hover { color: var(--r3d-accent); }
+  .r3d-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
 
-/* ── Device info panel ───────────────────────────────── */
-#r3d-info {
-  position: absolute; top: 10px; right: 10px; width: 280px;
-  background: var(--r3d-panel);
-  border: 1px solid var(--r3d-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  transition: opacity 0.2s, transform 0.2s;
-  z-index: 100;
-}
-#r3d-info.r3d-info-hidden { opacity: 0; pointer-events: none; transform: translateX(12px); }
+  .r3d-radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--r3d-text);
+    cursor: pointer;
+  }
 
-#r3d-info-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid var(--r3d-border);
-}
-#r3d-info-title {
-  font-size: 13px; font-weight: 600; color: var(--r3d-text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-#btn-info-close {
-  background: none; border: none; color: var(--r3d-text-dim);
-  cursor: pointer; font-size: 14px; line-height: 1; padding: 0;
-}
-#btn-info-close:hover { color: var(--r3d-text); }
+  .r3d-radio-group input[type="radio"] {
+    accent-color: var(--r3d-accent);
+    cursor: pointer;
+  }
 
-#r3d-info-body {
-  padding: 10px 12px 14px;
-  font-size: 12px; color: var(--r3d-text-dim); line-height: 1.9;
-}
-#r3d-info-body a { color: var(--r3d-accent); text-decoration: none; }
-#r3d-info-body a:hover { text-decoration: underline; }
-.r3d-info-row { display: flex; gap: 6px; }
-.r3d-info-lbl { color: var(--r3d-text-dim); min-width: 72px; }
-.r3d-info-val { color: var(--r3d-text); }
+  /* Rail depth 2-column grid */
+  .r3d-rail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
+  }
 
-/* ── CSS2D device labels ─────────────────────────────── */
-.r3d-device-label {
-  background: rgba(10,12,16,0.82); color: #c9d1e0;
-  font-size: 10px; font-family: monospace;
-  padding: 2px 5px; border-radius: 3px; border: 1px solid #2a3045;
-  white-space: nowrap; pointer-events: none; user-select: none;
-}
-#rack3d-root[data-theme="light"] .r3d-device-label {
-  background: rgba(240,242,245,0.9); color: #1a1a2e; border-color: #c8d0e0;
-}
+  .r3d-rail-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--r3d-text-dim);
+  }
+
+  .r3d-rail-grid input {
+    background: var(--r3d-input-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    border-radius: 3px;
+    padding: 3px 5px;
+    font-size: 12px;
+    width: 100%;
+  }
+
+  .r3d-rail-grid input:focus {
+    border-color: var(--r3d-accent);
+    outline: none;
+  }
+
+  .r3d-config-divider {
+    border: none;
+    border-top: 1px solid var(--r3d-border);
+    margin: 0;
+  }
+
+  /* ── Layout Manager overlay ──────────────────────────── */
+  #r3d-layout-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    background: var(--r3d-bg);
+    display: flex;
+    flex-direction: column;
+    transition: opacity 0.2s;
+  }
+
+  #r3d-layout-panel.r3d-layout-hidden {
+    display: none;
+  }
+
+  #r3d-layout-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--r3d-panel);
+    border-bottom: 1px solid var(--r3d-border);
+    flex-shrink: 0;
+  }
+
+  #r3d-layout-header span {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--r3d-text);
+  }
+
+  #r3d-layout-header .r3d-header-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  #r3d-layout-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Left: config + available racks */
+  #r3d-layout-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--r3d-panel);
+    border-right: 1px solid var(--r3d-border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 12px;
+    gap: 14px;
+  }
+
+  .r3d-layout-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .r3d-layout-field label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--r3d-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .r3d-layout-field input {
+    background: var(--r3d-input-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .r3d-layout-field input:focus {
+    border-color: var(--r3d-accent);
+    outline: none;
+  }
+
+  #r3d-layout-sidebar h4 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--r3d-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  #r3d-available-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+  }
+
+  .available-rack-chip {
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--r3d-input-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .available-rack-chip.placed {
+    opacity: 0.4;
+  }
+
+  /* Right: floor grid */
+  #r3d-layout-grid-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+  }
+
+  #r3d-layout-grid-wrap h4 {
+    margin: 0 0 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--r3d-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  #r3d-floor-grid {
+    display: grid;
+    gap: 6px;
+  }
+
+  .layout-cell {
+    min-height: 56px;
+    min-width: 110px;
+    border: 1px dashed var(--r3d-border);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s;
+    overflow: hidden;
+  }
+
+  .layout-cell:hover {
+    border-color: var(--r3d-accent);
+  }
+
+  .layout-cell-rack {
+    width: 100%;
+    height: 100%;
+    padding: 5px 8px;
+    background: rgba(74, 158, 255, 0.1);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    min-height: 54px;
+  }
+
+  #rack3d-root[data-theme="light"] .layout-cell-rack {
+    background: rgba(37, 99, 235, 0.08);
+  }
+
+  .layout-cell-rack span {
+    font-size: 11px;
+    color: var(--r3d-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  .layout-cell-remove {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--r3d-text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+
+  .layout-cell-remove:hover {
+    color: #e74c3c;
+  }
+
+  .layout-cell select {
+    background: transparent;
+    color: var(--r3d-text-dim);
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+    width: 100%;
+    text-align: center;
+  }
+
+  .layout-cell select:hover {
+    color: var(--r3d-accent);
+  }
+
+  /* ── Device info panel ───────────────────────────────── */
+  #r3d-info {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 280px;
+    background: var(--r3d-panel);
+    border: 1px solid var(--r3d-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 100;
+  }
+
+  #r3d-info.r3d-info-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(12px);
+  }
+
+  #r3d-info-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--r3d-border);
+  }
+
+  #r3d-info-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--r3d-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #btn-info-close {
+    background: none;
+    border: none;
+    color: var(--r3d-text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  #btn-info-close:hover {
+    color: var(--r3d-text);
+  }
+
+  #r3d-info-body {
+    padding: 10px 12px 14px;
+    font-size: 12px;
+    color: var(--r3d-text-dim);
+    line-height: 1.9;
+  }
+
+  #r3d-info-body a {
+    color: var(--r3d-accent);
+    text-decoration: none;
+  }
+
+  #r3d-info-body a:hover {
+    text-decoration: underline;
+  }
+
+  .r3d-info-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  .r3d-info-lbl {
+    color: var(--r3d-text-dim);
+    min-width: 72px;
+  }
+
+  .r3d-info-val {
+    color: var(--r3d-text);
+  }
+
+  /* ── CSS2D device labels ─────────────────────────────── */
+  .r3d-device-label {
+    background: rgba(10, 12, 16, 0.82);
+    color: #c9d1e0;
+    font-size: 10px;
+    font-family: monospace;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid #2a3045;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  #rack3d-root[data-theme="light"] .r3d-device-label {
+    background: rgba(240, 242, 245, 0.9);
+    color: #1a1a2e;
+    border-color: #c8d0e0;
+  }
 </style>
 {% endblock head %}
 
@@ -414,15 +674,15 @@
       </select>
       <div id="r3d-face-toggle">
         <button class="r3d-face-btn active" data-face="front">Front</button>
-        <button class="r3d-face-btn"        data-face="rear" >Rear</button>
-        <button class="r3d-face-btn"        data-face="both" >Both</button>
+        <button class="r3d-face-btn" data-face="rear">Rear</button>
+        <button class="r3d-face-btn" data-face="both">Both</button>
       </div>
     </div>
 
     <div id="r3d-controls">
-      <button id="btn-layout"       class="r3d-btn" title="Open layout manager">⊞ Layout</button>
-      <button id="btn-reset-cam"    class="r3d-btn" title="Reset camera">↺ Reset</button>
-      <button id="btn-fit-rack"     class="r3d-btn" title="Fit view">⊡ Fit</button>
+      <button id="btn-layout" class="r3d-btn" title="Open layout manager">⊞ Layout</button>
+      <button id="btn-reset-cam" class="r3d-btn" title="Reset camera">↺ Reset</button>
+      <button id="btn-fit-rack" class="r3d-btn" title="Fit view">⊡ Fit</button>
       <button id="btn-config-toggle" class="r3d-btn" title="Toggle config panel">⚙ Config</button>
       <button id="btn-theme-toggle" class="r3d-btn" title="Toggle light/dark mode">☀</button>
     </div>
@@ -471,16 +731,20 @@
         <div class="r3d-config-section">
           <span class="r3d-config-label">Front Rail Depth</span>
           <div class="r3d-rail-grid">
-            <label>Left<input type="number" id="cfg-rail-fl" class="no-ts" min="0.5" max="10" step="0.5" value="2"></label>
-            <label>Right<input type="number" id="cfg-rail-fr" class="no-ts" min="0.5" max="10" step="0.5" value="2"></label>
+            <label>Left<input type="number" id="cfg-rail-fl" class="no-ts" min="0.5" max="10" step="0.5"
+                value="2"></label>
+            <label>Right<input type="number" id="cfg-rail-fr" class="no-ts" min="0.5" max="10" step="0.5"
+                value="2"></label>
           </div>
         </div>
 
         <div class="r3d-config-section">
           <span class="r3d-config-label">Rear Rail Depth</span>
           <div class="r3d-rail-grid">
-            <label>Left<input type="number" id="cfg-rail-rl" class="no-ts" min="0.5" max="10" step="0.5" value="2"></label>
-            <label>Right<input type="number" id="cfg-rail-rr" class="no-ts" min="0.5" max="10" step="0.5" value="2"></label>
+            <label>Left<input type="number" id="cfg-rail-rl" class="no-ts" min="0.5" max="10" step="0.5"
+                value="2"></label>
+            <label>Right<input type="number" id="cfg-rail-rr" class="no-ts" min="0.5" max="10" step="0.5"
+                value="2"></label>
           </div>
         </div>
 

@@ -4,14 +4,14 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const U_SCALE_BASE   = 1.75;
-const RACK_WIDTH     = 19.0;
-const POST_W         = 0.5;
-const RAIL_H         = 0.25;
-const BLANK_DEPTH    = 0.5;
+const U_SCALE_BASE = 1.75;
+const RACK_WIDTH = 19.0;
+const POST_W = 0.5;
+const RAIL_H = 0.25;
+const BLANK_DEPTH = 0.5;
 const LABEL_SHOW_DIST = 60;
-const LS_LAYOUT      = 'iff_rack3d_layout';
-const LS_SETTINGS    = 'iff_rack3d_settings';
+const LS_LAYOUT = 'iff_rack3d_layout';
+const LS_SETTINGS = 'iff_rack3d_settings';
 
 const DEPTH_MAP = { realistic: 28.0, flat: 4.0, schematic: 1.2 };
 
@@ -22,8 +22,8 @@ function hashColor(str) {
         h = Math.imul(h, 0x01000193) >>> 0;
     }
     const r = 80 + ((h & 0xFF0000) >> 16) % 140;
-    const g = 80 + ((h & 0x00FF00) >>  8) % 140;
-    const b = 80 + ((h & 0x0000FF)      ) % 140;
+    const g = 80 + ((h & 0x00FF00) >> 8) % 140;
+    const b = 80 + ((h & 0x0000FF)) % 140;
     return (r << 16) | (g << 8) | b;
 }
 
@@ -44,11 +44,11 @@ function themeColors(theme) {
 class RackScene {
     constructor(container) {
         this._container = container;
-        this._meshes    = [];
-        this._labels    = [];
-        this._textures  = [];
-        this._animId    = null;
-        this._settings  = { theme: 'dark', labels: 'auto' };
+        this._meshes = [];
+        this._labels = [];
+        this._textures = [];
+        this._animId = null;
+        this._settings = { theme: 'dark', labels: 'auto' };
 
         this._renderer = new THREE.WebGLRenderer({ antialias: true });
         this._renderer.setPixelRatio(window.devicePixelRatio);
@@ -75,11 +75,11 @@ class RackScene {
         this._controls = new OrbitControls(this._camera, this._renderer.domElement);
         this._controls.enableDamping = true;
         this._controls.dampingFactor = 0.06;
-        this._controls.minDistance   = 2;
-        this._controls.maxDistance   = 600;
+        this._controls.minDistance = 2;
+        this._controls.maxDistance = 600;
 
         this._raycaster = new THREE.Raycaster();
-        this._mouse     = new THREE.Vector2();
+        this._mouse = new THREE.Vector2();
 
         this._resizeObserver = new ResizeObserver(() => this._onResize());
         this._resizeObserver.observe(container);
@@ -138,11 +138,11 @@ class RackScene {
     }
 
     resetCamera(rack, settings) {
-        const sc     = parseFloat(settings.scale) || 1;
+        const sc = parseFloat(settings.scale) || 1;
         const totalH = rack.u_height * U_SCALE_BASE * sc;
-        const depth  = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
+        const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
         const target = new THREE.Vector3(0, totalH * 0.5, 0);
-        const dist   = Math.max(totalH, RACK_WIDTH) * 1.6 + depth;
+        const dist = Math.max(totalH, RACK_WIDTH) * 1.6 + depth;
         this._camera.position.set(RACK_WIDTH * 0.8, totalH * 0.55, dist);
         this._camera.lookAt(target);
         this._controls.target.copy(target);
@@ -153,10 +153,10 @@ class RackScene {
         const box = new THREE.Box3().setFromObject(this._scene);
         if (box.isEmpty()) return;
         const center = box.getCenter(new THREE.Vector3());
-        const size   = box.getSize(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const fov    = this._camera.fov * (Math.PI / 180);
-        const dist   = (maxDim / (2 * Math.tan(fov / 2))) * 1.4;
+        const fov = this._camera.fov * (Math.PI / 180);
+        const dist = (maxDim / (2 * Math.tan(fov / 2))) * 1.4;
         this._controls.target.copy(center);
         this._camera.position.set(center.x + dist * 0.4, center.y + dist * 0.5, center.z + dist);
         this._camera.lookAt(center);
@@ -165,8 +165,8 @@ class RackScene {
 
     pickDevice(event) {
         const rect = this._container.getBoundingClientRect();
-        this._mouse.x =  ((event.clientX - rect.left)  / rect.width)  * 2 - 1;
-        this._mouse.y = -((event.clientY - rect.top)   / rect.height) * 2 + 1;
+        this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
         this._raycaster.setFromCamera(this._mouse, this._camera);
         const hits = this._raycaster.intersectObjects(this._meshes.filter(m => m.userData.deviceId), false);
         return hits.length ? hits[0].object.userData.deviceData : null;
@@ -211,11 +211,11 @@ class RackScene {
     }
 
     _buildRackFrame(rack, settings, offset) {
-        const sc     = parseFloat(settings.scale) || 1;
+        const sc = parseFloat(settings.scale) || 1;
         const totalH = rack.u_height * U_SCALE_BASE * sc;
-        const depth  = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
+        const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
         const colors = themeColors(settings.theme);
-        const mat    = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.75, roughness: 0.35 });
+        const mat = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.75, roughness: 0.35 });
 
         const railFL = Math.max(0.5, parseFloat(settings.railFL) || 2);
         const railFR = Math.max(0.5, parseFloat(settings.railFR) || 2);
@@ -228,9 +228,9 @@ class RackScene {
         // Front = negative Z (facing camera), Rear = positive Z
         const corners = [
             { sx: -1, zSign: -1, rd: railFL },  // front-left
-            { sx:  1, zSign: -1, rd: railFR },  // front-right
-            { sx: -1, zSign:  1, rd: railRL },  // rear-left
-            { sx:  1, zSign:  1, rd: railRR },  // rear-right
+            { sx: 1, zSign: -1, rd: railFR },  // front-right
+            { sx: -1, zSign: 1, rd: railRL },  // rear-left
+            { sx: 1, zSign: 1, rd: railRR },  // rear-right
         ];
         for (const { sx, zSign, rd } of corners) {
             const postGeo = new THREE.BoxGeometry(POST_W, totalH, rd);
@@ -243,10 +243,10 @@ class RackScene {
 
         // Top + bottom horizontal rails spanning full depth
         const frontExt = Math.max(railFL, railFR);
-        const rearExt  = Math.max(railRL, railRR);
+        const rearExt = Math.max(railRL, railRR);
         const railSpan = depth + frontExt + rearExt;
         const railZOff = (rearExt - frontExt) / 2;
-        const railGeo  = new THREE.BoxGeometry(RACK_WIDTH + POST_W * 2 + 0.1, RAIL_H, railSpan);
+        const railGeo = new THREE.BoxGeometry(RACK_WIDTH + POST_W * 2 + 0.1, RAIL_H, railSpan);
         for (const y of [0, totalH]) {
             const m = new THREE.Mesh(railGeo, mat);
             m.position.set(offset.x, offset.y + y, offset.z + railZOff);
@@ -269,27 +269,27 @@ class RackScene {
     }
 
     _buildDevices(devices, rack, settings, offset) {
-        const sc     = parseFloat(settings.scale) || 1;
-        const depth  = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
-        const face   = settings.face || 'both';
+        const sc = parseFloat(settings.scale) || 1;
+        const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
+        const face = settings.face || 'both';
         const loader = new THREE.TextureLoader();
         const colors = themeColors(settings.theme);
         const darkMat = new THREE.MeshStandardMaterial({ color: colors.deviceDark, metalness: 0.65, roughness: 0.45 });
 
         for (const dev of devices) {
-            if (face === 'front' && dev.face === 'rear'  && !dev.is_full_depth) continue;
-            if (face === 'rear'  && dev.face === 'front' && !dev.is_full_depth) continue;
+            if (face === 'front' && dev.face === 'rear' && !dev.is_full_depth) continue;
+            if (face === 'rear' && dev.face === 'front' && !dev.is_full_depth) continue;
 
-            const deviceH     = dev.u_height * U_SCALE_BASE * sc;
+            const deviceH = dev.u_height * U_SCALE_BASE * sc;
             const deviceDepth = dev.is_full_depth ? depth : depth * 0.55;
-            const yBottom     = this._calcY(dev, rack, sc);
+            const yBottom = this._calcY(dev, rack, sc);
 
             const geo = new THREE.BoxGeometry(RACK_WIDTH - POST_W * 2, deviceH, deviceDepth);
             const materials = [
                 darkMat, darkMat,
                 darkMat, darkMat,
                 this._faceMat(dev, 'front', loader, settings, colors),
-                this._faceMat(dev, 'rear',  loader, settings, colors),
+                this._faceMat(dev, 'rear', loader, settings, colors),
             ];
 
             const mesh = new THREE.Mesh(geo, materials);
@@ -338,13 +338,13 @@ class RackScene {
             }
         }
 
-        const mat   = new THREE.MeshStandardMaterial({ color: colors.blank, metalness: 0.25, roughness: 0.75 });
+        const mat = new THREE.MeshStandardMaterial({ color: colors.blank, metalness: 0.25, roughness: 0.75 });
         const slotH = U_SCALE_BASE * sc;
 
         for (let u = rack.starting_unit; u < rack.starting_unit + rack.u_height; u++) {
             if (occupied.has(u * 2)) continue;
             const geo = new THREE.BoxGeometry(RACK_WIDTH - POST_W * 2 - 0.05, slotH - 0.08, BLANK_DEPTH);
-            const m   = new THREE.Mesh(geo, mat);
+            const m = new THREE.Mesh(geo, mat);
             m.position.set(offset.x, offset.y + this._calcYFromUnit(u, rack, sc) + slotH / 2, offset.z);
             this._scene.add(m);
             this._meshes.push(m);
@@ -373,13 +373,13 @@ class RackScene {
             else if (m.material) m.material.dispose();
         }
         for (const t of this._textures) t.dispose();
-        this._meshes  = [];
-        this._labels  = [];
+        this._meshes = [];
+        this._labels = [];
         this._textures = [];
     }
 
     _applyLabelMode(mode) {
-        if (mode === 'on')  { this._labels.forEach(l => { l.element.style.display = ''; }); return; }
+        if (mode === 'on') { this._labels.forEach(l => { l.element.style.display = ''; }); return; }
         if (mode === 'off') { this._labels.forEach(l => { l.element.style.display = 'none'; }); return; }
         this._updateLabelVisibility();
     }
@@ -415,11 +415,11 @@ class LayoutManager {
         this._state = this._load();
     }
 
-    get rows()      { return this._state.rows; }
-    get cols()      { return this._state.cols; }
+    get rows() { return this._state.rows; }
+    get cols() { return this._state.cols; }
     get cellWidth() { return this._state.cellWidth; }
     get cellDepth() { return this._state.cellDepth; }
-    get cells()     { return this._state.cells; }   // { "r,c": rackId }
+    get cells() { return this._state.cells; }   // { "r,c": rackId }
 
     setGridSize(rows, cols) {
         this._state.rows = rows;
@@ -442,7 +442,7 @@ class LayoutManager {
             if (v === rackId) delete this._state.cells[k];
         }
         if (rackId) this._state.cells[`${row},${col}`] = rackId;
-        else         delete this._state.cells[`${row},${col}`];
+        else delete this._state.cells[`${row},${col}`];
     }
 
     unassign(row, col) {
@@ -462,7 +462,7 @@ class LayoutManager {
         try {
             const raw = localStorage.getItem(LS_LAYOUT);
             if (raw) return JSON.parse(raw);
-        } catch (_) {}
+        } catch (_) { }
         return { rows: 2, cols: 4, cellWidth: 30, cellDepth: 50, cells: {} };
     }
 }
@@ -471,25 +471,25 @@ class LayoutManager {
 
 class AppController {
     constructor() {
-        this._viewport    = document.getElementById('r3d-viewport');
-        this._loading     = document.getElementById('r3d-loading');
-        this._empty       = document.getElementById('r3d-empty');
-        this._siteSel     = document.getElementById('filter-site');
-        this._rackSel     = document.getElementById('filter-rack');
+        this._viewport = document.getElementById('r3d-viewport');
+        this._loading = document.getElementById('r3d-loading');
+        this._empty = document.getElementById('r3d-empty');
+        this._siteSel = document.getElementById('filter-site');
+        this._rackSel = document.getElementById('filter-rack');
         this._configPanel = document.getElementById('r3d-config');
         this._layoutPanel = document.getElementById('r3d-layout-panel');
-        this._infoPanel   = document.getElementById('r3d-info');
-        this._infoTitle   = document.getElementById('r3d-info-title');
-        this._infoBody    = document.getElementById('r3d-info-body');
-        this._root        = document.getElementById('rack3d-root');
-        this._themeBtn    = document.getElementById('btn-theme-toggle');
+        this._infoPanel = document.getElementById('r3d-info');
+        this._infoTitle = document.getElementById('r3d-info-title');
+        this._infoBody = document.getElementById('r3d-info-body');
+        this._root = document.getElementById('rack3d-root');
+        this._themeBtn = document.getElementById('btn-theme-toggle');
 
-        this._allRacks    = [];
+        this._allRacks = [];
         this._loadedRacks = {};   // rackId → rackData (cache)
-        this._loadId      = 0;
+        this._loadId = 0;
         this._currentData = null; // single-rack mode
-        this._layoutMode  = false;
-        this._layout      = new LayoutManager();
+        this._layoutMode = false;
+        this._layout = new LayoutManager();
 
         this._restoreSettings();
         this._scene = new RackScene(this._viewport);
@@ -503,17 +503,17 @@ class AppController {
         try {
             const s = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
             if (s.theme) this._root.setAttribute('data-theme', s.theme);
-            if (s.scale)  document.querySelector(`input[name="scale"][value="${s.scale}"]`)?.click();
-            if (s.depth)  document.querySelector(`input[name="depth"][value="${s.depth}"]`)?.click();
+            if (s.scale) document.querySelector(`input[name="scale"][value="${s.scale}"]`)?.click();
+            if (s.depth) document.querySelector(`input[name="depth"][value="${s.depth}"]`)?.click();
             if (s.labels) document.querySelector(`input[name="labels"][value="${s.labels}"]`)?.click();
             if (s.colorby) document.querySelector(`input[name="colorby"][value="${s.colorby}"]`)?.click();
-            if (s.empty)  document.querySelector(`input[name="empty"][value="${s.empty}"]`)?.click();
+            if (s.empty) document.querySelector(`input[name="empty"][value="${s.empty}"]`)?.click();
             if (s.railFL) document.getElementById('cfg-rail-fl').value = s.railFL;
             if (s.railFR) document.getElementById('cfg-rail-fr').value = s.railFR;
             if (s.railRL) document.getElementById('cfg-rail-rl').value = s.railRL;
             if (s.railRR) document.getElementById('cfg-rail-rr').value = s.railRR;
             this._updateThemeBtn();
-        } catch (_) {}
+        } catch (_) { }
     }
 
     _saveSettings() {
@@ -591,7 +591,7 @@ class AppController {
         this._viewport.addEventListener('click', e => {
             const dev = this._scene.pickDevice(e);
             if (dev) this._showInfo(dev);
-            else     this._hideInfo();
+            else this._hideInfo();
         });
     }
 
@@ -599,7 +599,7 @@ class AppController {
 
     async _loadSitesAndRacks() {
         try {
-            const res  = await fetch('/api/plugins/innovace-fibre/racks/');
+            const res = await fetch('/api/plugins/innovace-fibre/racks/');
             const data = await res.json();
             this._allRacks = data.racks || [];
 
@@ -615,7 +615,7 @@ class AppController {
 
     _updateRackDropdown() {
         const siteId = this._siteSel.value;
-        const racks  = siteId ? this._allRacks.filter(r => String(r.site_id) === siteId) : this._allRacks;
+        const racks = siteId ? this._allRacks.filter(r => String(r.site_id) === siteId) : this._allRacks;
         this._rackSel.innerHTML = '<option value="">Select rack…</option>';
         for (const r of racks) {
             const opt = document.createElement('option');
@@ -636,7 +636,7 @@ class AppController {
         this._showLoading(true);
         this._hideInfo();
         try {
-            const res  = await fetch(`/api/plugins/innovace-fibre/racks/${rackId}/3d-data/`);
+            const res = await fetch(`/api/plugins/innovace-fibre/racks/${rackId}/3d-data/`);
             if (id !== this._loadId) return;
             const data = await res.json();
             this._loadedRacks[rackId] = data;
@@ -653,7 +653,7 @@ class AppController {
         const missing = rackIds.filter(id => !this._loadedRacks[id]);
         await Promise.all(missing.map(async id => {
             try {
-                const res  = await fetch(`/api/plugins/innovace-fibre/racks/${id}/3d-data/`);
+                const res = await fetch(`/api/plugins/innovace-fibre/racks/${id}/3d-data/`);
                 this._loadedRacks[id] = await res.json();
             } catch (e) { console.error(`Failed to load rack ${id}:`, e); }
         }));
@@ -663,8 +663,8 @@ class AppController {
 
     _openLayoutPanel() {
         // Sync layout sidebar inputs from state
-        document.getElementById('cfg-rows').value   = this._layout.rows;
-        document.getElementById('cfg-cols').value   = this._layout.cols;
+        document.getElementById('cfg-rows').value = this._layout.rows;
+        document.getElementById('cfg-cols').value = this._layout.cols;
         document.getElementById('cfg-cell-w').value = this._layout.cellWidth;
         document.getElementById('cfg-cell-d').value = this._layout.cellDepth;
 
@@ -724,9 +724,9 @@ class AppController {
 
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
-                const key    = `${r},${c}`;
+                const key = `${r},${c}`;
                 const rackId = this._layout.cells[key];
-                const rack   = rackId ? this._allRacks.find(x => String(x.id) === String(rackId)) : null;
+                const rack = rackId ? this._allRacks.find(x => String(x.id) === String(rackId)) : null;
 
                 const cell = document.createElement('div');
                 cell.className = 'layout-cell';
@@ -786,7 +786,7 @@ class AppController {
 
     _toggleTheme() {
         const current = this._root.getAttribute('data-theme') || 'dark';
-        const next    = current === 'dark' ? 'light' : 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
         this._root.setAttribute('data-theme', next);
         this._scene.setTheme(next);
         this._rebuildScene();
@@ -817,18 +817,18 @@ class AppController {
         const theme = this._root.getAttribute('data-theme') || 'dark';
         return {
             theme,
-            scale:     document.querySelector('input[name="scale"]:checked')?.value    || '1',
-            depth:     document.querySelector('input[name="depth"]:checked')?.value    || 'realistic',
-            labels:    document.querySelector('input[name="labels"]:checked')?.value   || 'auto',
-            colorBy:   document.querySelector('input[name="colorby"]:checked')?.value  || 'image',
-            showEmpty: document.querySelector('input[name="empty"]:checked')?.value    === 'yes',
-            face:      document.querySelector('.r3d-face-btn.active')?.dataset.face    || 'both',
-            railFL:    parseFloat(document.getElementById('cfg-rail-fl')?.value) || 2,
-            railFR:    parseFloat(document.getElementById('cfg-rail-fr')?.value) || 2,
-            railRL:    parseFloat(document.getElementById('cfg-rail-rl')?.value) || 2,
-            railRR:    parseFloat(document.getElementById('cfg-rail-rr')?.value) || 2,
-            cellWidth: parseFloat(document.getElementById('cfg-cell-w')?.value)  || 30,
-            cellDepth: parseFloat(document.getElementById('cfg-cell-d')?.value)  || 50,
+            scale: document.querySelector('input[name="scale"]:checked')?.value || '1',
+            depth: document.querySelector('input[name="depth"]:checked')?.value || 'realistic',
+            labels: document.querySelector('input[name="labels"]:checked')?.value || 'auto',
+            colorBy: document.querySelector('input[name="colorby"]:checked')?.value || 'image',
+            showEmpty: document.querySelector('input[name="empty"]:checked')?.value === 'yes',
+            face: document.querySelector('.r3d-face-btn.active')?.dataset.face || 'both',
+            railFL: parseFloat(document.getElementById('cfg-rail-fl')?.value) || 2,
+            railFR: parseFloat(document.getElementById('cfg-rail-fr')?.value) || 2,
+            railRL: parseFloat(document.getElementById('cfg-rail-rl')?.value) || 2,
+            railRR: parseFloat(document.getElementById('cfg-rail-rr')?.value) || 2,
+            cellWidth: parseFloat(document.getElementById('cfg-cell-w')?.value) || 30,
+            cellDepth: parseFloat(document.getElementById('cfg-cell-d')?.value) || 50,
         };
     }
 
@@ -853,7 +853,7 @@ class AppController {
 
     _showLoading(on) {
         this._loading.style.display = on ? 'flex' : 'none';
-        this._empty.style.display   = (on || this._currentData || this._layoutMode) ? 'none' : '';
+        this._empty.style.display = (on || this._currentData || this._layoutMode) ? 'none' : '';
     }
 }
 
