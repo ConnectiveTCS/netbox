@@ -13,7 +13,21 @@
       "PowerShell(docker compose logs netbox --tail=80 2>&1)",
       "PowerShell(docker compose logs netbox --since=1m 2>&1)",
       "Bash(cat docker-compose.yml)",
-      "Bash(cat docker-compose.yaml)"
+      "Bash(cat docker-compose.yaml)",
+      "Bash(grep -E \"\\\\.\\(js|css\\)$\")",
+      "PowerShell(docker compose exec -T netbox bash -c \"curl -s http://localhost:8080/api/plugins/innovace-fibre/racks/ -H 'Accept: application/json' | python3 -m json.tool\")",
+      "PowerShell(docker compose exec -T netbox bash -c \"wget -qO- 'http://localhost:8080/api/plugins/innovace-fibre/racks/'\")",
+      "PowerShell(docker compose exec -T netbox bash -c \"python3 -c 'import urllib.request; r=urllib.request.urlopen\\(\\\\\"http://localhost:8080/api/plugins/innovace-fibre/racks/\\\\\"\\); print\\(r.read\\(\\).decode\\(\\)\\)'\")",
+      "PowerShell(docker compose exec -T netbox python3 -c $py)",
+      "PowerShell($py = 'import urllib.request; r=urllib.request.urlopen\\(\"http://localhost:8080/api/plugins/innovace-fibre/racks/\"\\); print\\(r.read\\(\\).decode\\(\\)\\)')",
+      "PowerShell(docker compose cp tmp_check.py netbox:/tmp/check.py)",
+      "PowerShell(docker compose exec -T netbox python /tmp/check.py 2>&1)",
+      "PowerShell(docker compose exec -T netbox bash -c \"cd /opt/netbox/netbox && python /tmp/check.py\" 2>&1)",
+      "PowerShell(docker compose exec -T netbox bash -c \"ps aux | grep gunicorn | head -5\")",
+      "PowerShell(docker compose exec -T netbox bash -c \"cat /proc/1/cmdline | tr '\\\\0' ' '\")",
+      "PowerShell(docker compose logs --tail=50 netbox 2>&1 | Where-Object { $_ -match \"ERROR|Exception|Traceback|racks|500\" })",
+      "PowerShell(docker compose logs --tail=80 netbox 2>&1)",
+      "PowerShell(docker compose logs --tail=100 nginx 2>&1)"
     ]
   }
 }

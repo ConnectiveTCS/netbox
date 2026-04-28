@@ -12,6 +12,13 @@ from .tables import DeviceCustomMappingTable
 from .tracer import trace_signal_path, trace_signal_path_for_device
 
 
+class Rack3DView(View):
+    template_name = 'netbox_innovace_fibre/rack_3d.html'
+
+    def get(self, request):
+        return render(request, self.template_name)
+
+
 class TopologyView(View):
     template_name = 'netbox_innovace_fibre/topology.html'
 

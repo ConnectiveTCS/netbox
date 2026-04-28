@@ -1,10 +1,11 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
 from netbox.api.authentication import IsAuthenticatedOrLoginNotRequired
 
-from dcim.models import Cable, CableTermination, Device, DeviceRole, Site
+from dcim.models import Cable, CableTermination, Device, DeviceRole, Rack, Site
 from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, SignalRouting
 from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_for_device
 
@@ -144,6 +145,81 @@ class TopologyDataAPIView(APIView):
             'nodes': list(nodes.values()),
             'edges': edges,
             'filters': {'sites': all_sites, 'roles': all_roles},
+        })
+
+
+class RackListAPIView(APIView):
+    """
+    Lightweight rack list for the 3D Rack View toolbar dropdown.
+    Returns all racks (optionally filtered by ?site_id=) plus all sites.
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request):
+        site_id = request.GET.get('site_id')
+        qs = Rack.objects.select_related('site').order_by('site__name', 'name')
+        if site_id:
+            qs = qs.filter(site_id=site_id)
+        racks = [
+            {'id': r.pk, 'name': r.name, 'site_id': r.site_id, 'site': r.site.name if r.site_id else ''}
+            for r in qs
+        ]
+        all_sites = list(Site.objects.values('id', 'name').order_by('name'))
+        return Response({'racks': racks, 'sites': all_sites})
+
+
+class Rack3DDataAPIView(APIView):
+    """
+    Full device geometry payload for the 3D rack renderer.
+    Returns rack metadata and all racked devices with position, U-height, and image URLs.
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request, pk):
+        rack = get_object_or_404(Rack.objects.select_related('site', 'rack_type'), pk=pk)
+
+        effective_u_height   = rack.rack_type.u_height      if rack.rack_type_id else rack.u_height
+        effective_starting   = rack.rack_type.starting_unit if rack.rack_type_id else rack.starting_unit
+        effective_desc_units = rack.rack_type.desc_units    if rack.rack_type_id else rack.desc_units
+
+        devices_qs = (
+            Device.objects
+            .filter(rack=rack, position__isnull=False)
+            .select_related('device_type__manufacturer', 'role')
+            .order_by('position')
+        )
+
+        device_list = []
+        for dev in devices_qs:
+            dt = dev.device_type
+            front_image = request.build_absolute_uri(dt.front_image.url) if dt.front_image else None
+            rear_image  = request.build_absolute_uri(dt.rear_image.url)  if dt.rear_image  else None
+            device_list.append({
+                'id':            dev.pk,
+                'name':          dev.name or f'Device {dev.pk}',
+                'position':      float(dev.position),
+                'face':          dev.face or 'front',
+                'u_height':      float(dt.u_height),
+                'is_full_depth': dt.is_full_depth,
+                'device_type':   dt.model,
+                'manufacturer':  dt.manufacturer.name if dt.manufacturer_id else '',
+                'role':          dev.role.name  if dev.role_id else '',
+                'role_color':    dev.role.color if dev.role_id else '',
+                'front_image':   front_image,
+                'rear_image':    rear_image,
+                'url':           f'/dcim/devices/{dev.pk}/',
+            })
+
+        return Response({
+            'rack': {
+                'id':            rack.pk,
+                'name':          rack.name,
+                'u_height':      effective_u_height,
+                'starting_unit': effective_starting,
+                'desc_units':    effective_desc_units,
+                'site':          rack.site.name if rack.site_id else '',
+            },
+            'devices': device_list,
         })
 
 

@@ -1,0 +1,452 @@
+{% extends 'base/layout.html' %}
+{% load static %}
+
+{% block title %}3D Rack View{% endblock %}
+
+{% block head %}
+{{ block.super }}
+<script type="importmap">
+{
+  "imports": {
+    "three":         "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+/* ── Layout ─────────────────────────────────────────── */
+#rack3d-root {
+  height: calc(100vh - 3.5rem);
+  display: flex;
+  flex-direction: column;
+  background: #0A0C10;
+  overflow: hidden;
+}
+
+/* ── Toolbar ─────────────────────────────────────────── */
+#r3d-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  background: #12151c;
+  border-bottom: 1px solid #1e2330;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+#r3d-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c9d1e0;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+#r3d-filters {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#r3d-filters select {
+  background: #1a1e2a;
+  color: #c9d1e0;
+  border: 1px solid #2a3045;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  outline: none;
+  min-width: 140px;
+}
+#r3d-filters select:focus { border-color: #4a9eff; }
+
+#r3d-face-toggle {
+  display: flex;
+  border: 1px solid #2a3045;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.r3d-face-btn {
+  background: #1a1e2a;
+  color: #c9d1e0;
+  border: none;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.r3d-face-btn + .r3d-face-btn { border-left: 1px solid #2a3045; }
+.r3d-face-btn:hover { background: #252c40; color: #fff; }
+.r3d-face-btn.active { background: #4a9eff; color: #fff; }
+
+#r3d-controls {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.r3d-btn {
+  background: #1a1e2a;
+  color: #c9d1e0;
+  border: 1px solid #2a3045;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.r3d-btn:hover { background: #252c40; border-color: #4a9eff; color: #fff; }
+
+/* ── Content row ─────────────────────────────────────── */
+#r3d-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── 3D Viewport ─────────────────────────────────────── */
+#r3d-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#r3d-viewport canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* CSS2DRenderer overlay injected by JS gets this class */
+#r3d-viewport .css2d-renderer {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none;
+}
+
+/* ── Loading / empty states ──────────────────────────── */
+#r3d-loading {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: #6b7a99;
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.r3d-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #1e2330;
+  border-top-color: #4a9eff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#r3d-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7a99;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+/* ── Config sidebar ──────────────────────────────────── */
+#r3d-config {
+  width: 220px;
+  flex-shrink: 0;
+  background: #12151c;
+  border-left: 1px solid #1e2330;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s, opacity 0.2s;
+}
+
+#r3d-config.r3d-config-hidden {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.r3d-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #1e2330;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1e0;
+  flex-shrink: 0;
+}
+
+.r3d-config-header button {
+  background: none;
+  border: none;
+  color: #6b7a99;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+}
+.r3d-config-header button:hover { color: #fff; }
+
+.r3d-config-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.r3d-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.r3d-config-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5c6880;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.r3d-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.r3d-radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #c9d1e0;
+  cursor: pointer;
+}
+
+.r3d-radio-group input[type="radio"] {
+  accent-color: #4a9eff;
+  cursor: pointer;
+}
+
+/* ── Device info panel ───────────────────────────────── */
+#r3d-info {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 280px;
+  background: #12151c;
+  border: 1px solid #1e2330;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 100;
+}
+
+#r3d-info.r3d-info-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(12px);
+}
+
+#r3d-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #1e2330;
+}
+
+#r3d-info-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1e0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#btn-info-close {
+  background: none;
+  border: none;
+  color: #6b7a99;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+#btn-info-close:hover { color: #fff; }
+
+#r3d-info-body {
+  padding: 10px 12px 14px;
+  font-size: 12px;
+  color: #9aa3b0;
+  line-height: 1.9;
+}
+
+#r3d-info-body a {
+  color: #4a9eff;
+  text-decoration: none;
+}
+#r3d-info-body a:hover { text-decoration: underline; }
+
+.r3d-info-row { display: flex; gap: 6px; }
+.r3d-info-lbl { color: #5c6880; min-width: 72px; }
+.r3d-info-val { color: #c9d1e0; }
+
+/* ── CSS2D device labels ─────────────────────────────── */
+.r3d-device-label {
+  background: rgba(10, 12, 16, 0.82);
+  color: #c9d1e0;
+  font-size: 10px;
+  font-family: monospace;
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid #2a3045;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+</style>
+{% endblock head %}
+
+{% block page %}
+<div id="rack3d-root">
+
+  {# ── Toolbar ─────────────────────────────────────────── #}
+  <div id="r3d-toolbar">
+    <span id="r3d-title">
+      <i class="mdi mdi-server-network"></i>&nbsp;3D Rack View
+    </span>
+
+    <div id="r3d-filters">
+      <select id="filter-site" class="no-ts" title="Filter racks by site">
+        <option value="">All sites</option>
+      </select>
+      <select id="filter-rack" class="no-ts" title="Select rack to view">
+        <option value="">Select rack…</option>
+      </select>
+      <div id="r3d-face-toggle">
+        <button class="r3d-face-btn active" data-face="front">Front</button>
+        <button class="r3d-face-btn"        data-face="rear" >Rear</button>
+        <button class="r3d-face-btn"        data-face="both" >Both</button>
+      </div>
+    </div>
+
+    <div id="r3d-controls">
+      <button id="btn-reset-cam" class="r3d-btn" title="Reset camera to default position">↺ Reset Camera</button>
+      <button id="btn-fit-rack"  class="r3d-btn" title="Fit rack in view">⊡ Fit</button>
+      <button id="btn-config-toggle" class="r3d-btn" title="Toggle config panel">⚙ Config</button>
+    </div>
+  </div>
+
+  {# ── Content row ──────────────────────────────────────── #}
+  <div id="r3d-content">
+
+    {# ── 3D Viewport ──────────────────────────────────────── #}
+    <div id="r3d-viewport">
+      <div id="r3d-loading">
+        <div class="r3d-spinner"></div>
+        <span>Loading rack data…</span>
+      </div>
+      <div id="r3d-empty">
+        Select a rack to view its 3D layout.
+      </div>
+      {# Three.js WebGL canvas and CSS2DRenderer overlay are injected here by rack_3d.js #}
+    </div>
+
+    {# ── Config sidebar ────────────────────────────────────── #}
+    <div id="r3d-config" class="r3d-config-hidden">
+      <div class="r3d-config-header">
+        <span>Config</span>
+        <button id="btn-config-close" title="Close config">✕</button>
+      </div>
+      <div class="r3d-config-body">
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Unit Scale</span>
+          <div class="r3d-radio-group" id="cfg-scale">
+            <label><input type="radio" name="scale" value="0.5"> 0.5×</label>
+            <label><input type="radio" name="scale" value="1" checked> 1×</label>
+            <label><input type="radio" name="scale" value="2"> 2×</label>
+          </div>
+        </div>
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Depth</span>
+          <div class="r3d-radio-group" id="cfg-depth">
+            <label><input type="radio" name="depth" value="realistic" checked> Realistic</label>
+            <label><input type="radio" name="depth" value="flat"> Flat</label>
+            <label><input type="radio" name="depth" value="schematic"> Schematic</label>
+          </div>
+        </div>
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Labels</span>
+          <div class="r3d-radio-group" id="cfg-labels">
+            <label><input type="radio" name="labels" value="on"> On</label>
+            <label><input type="radio" name="labels" value="auto" checked> Auto</label>
+            <label><input type="radio" name="labels" value="off"> Off</label>
+          </div>
+        </div>
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Color by</span>
+          <div class="r3d-radio-group" id="cfg-color">
+            <label><input type="radio" name="colorby" value="image" checked> Image</label>
+            <label><input type="radio" name="colorby" value="role"> Role</label>
+            <label><input type="radio" name="colorby" value="manufacturer"> Manufacturer</label>
+          </div>
+        </div>
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Empty slots</span>
+          <div class="r3d-radio-group" id="cfg-empty">
+            <label><input type="radio" name="empty" value="yes" checked> Show</label>
+            <label><input type="radio" name="empty" value="no"> Hide</label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>{# /r3d-content #}
+
+  {# ── Device info panel ────────────────────────────────── #}
+  <div id="r3d-info" class="r3d-info-hidden">
+    <div id="r3d-info-header">
+      <span id="r3d-info-title">Device</span>
+      <button id="btn-info-close" title="Close">✕</button>
+    </div>
+    <div id="r3d-info-body"></div>
+  </div>
+
+</div>
+{% endblock page %}
+
+{% block javascript %}
+{{ block.super }}
+<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}"></script>
+{% endblock %}
