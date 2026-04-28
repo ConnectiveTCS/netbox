@@ -5,10 +5,10 @@ from rest_framework.viewsets import ModelViewSet
 from netbox.api.authentication import IsAuthenticatedOrLoginNotRequired
 
 from dcim.models import Cable, CableTermination, Device, DeviceRole, Site
-from netbox_innovace_fibre.models import DeviceTypeSignalMeta, SignalRouting
-from netbox_innovace_fibre.tracer import trace_signal_path
+from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, SignalRouting
+from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_for_device
 
-from .serializers import DeviceTypeSignalMetaSerializer, SignalRoutingSerializer
+from .serializers import DeviceSignalRoutingSerializer, DeviceTypeSignalMetaSerializer, SignalRoutingSerializer
 
 
 class DeviceTypeSignalMetaViewSet(ModelViewSet):
@@ -19,6 +19,37 @@ class DeviceTypeSignalMetaViewSet(ModelViewSet):
 class SignalRoutingViewSet(ModelViewSet):
     queryset = SignalRouting.objects.all()
     serializer_class = SignalRoutingSerializer
+
+
+class DeviceSignalRoutingViewSet(ModelViewSet):
+    queryset = DeviceSignalRouting.objects.all()
+    serializer_class = DeviceSignalRoutingSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        device_id = self.request.query_params.get('device_id')
+        if device_id:
+            qs = qs.filter(device_id=device_id)
+        return qs
+
+
+class DeviceSignalTraceAPIView(APIView):
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request, pk):
+        from dcim.models import Device
+        device = Device.objects.get(pk=pk)
+        port = request.GET.get('port')
+        signal = int(request.GET.get('signal', '1'))
+        paths = trace_signal_path_for_device(device=device, port_name=port, signal=signal)
+        has_overrides = DeviceSignalRouting.objects.filter(device=device).exists()
+        return Response({
+            'device': device.pk,
+            'port': port,
+            'signal': signal,
+            'using_overrides': has_overrides,
+            'paths': paths,
+        })
 
 
 class SignalTraceAPIView(APIView):

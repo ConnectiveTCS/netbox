@@ -1,0 +1,159 @@
+{% extends 'base/layout.html' %}
+
+{% block content %}
+<h1>Signal Routing Overrides: {{ device }}</h1>
+<p>
+  Device type: <a href="{{ device.device_type.get_absolute_url }}">{{ device.device_type }}</a>
+</p>
+
+{% if overrides %}
+<div class="alert alert-info" role="alert">
+  This device has <strong>{{ overrides.count }} device-level override(s)</strong>.
+  The Innovace signal tracer uses these instead of the device type defaults.
+</div>
+{% else %}
+<div class="alert alert-secondary" role="alert">
+  No device-level overrides are defined. The signal tracer falls back to the
+  device type defaults shown below.
+</div>
+{% endif %}
+
+<h2>Device-Level Overrides</h2>
+<table class="table table-hover">
+  <thead>
+    <tr>
+      <th>From Port</th>
+      <th>From Signal</th>
+      <th>To Port</th>
+      <th>To Signal</th>
+      <th>Bidirectional</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for route in overrides %}
+    <tr>
+      <td>{{ route.from_port_name }}</td>
+      <td>{{ route.from_signal }}</td>
+      <td>{{ route.to_port_name }}</td>
+      <td>{{ route.to_signal }}</td>
+      <td>{% if route.is_bidirectional %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+      <td>
+        <form method="post"
+              action="{% url 'plugins:netbox_innovace_fibre:device_signal_routing_delete' device.pk route.pk %}"
+              onsubmit="return confirm('Delete this routing rule?');"
+              style="display:inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="6" class="text-muted">No device-level overrides defined.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# ── Add new override ── #}
+<div class="card mt-3">
+  <div class="card-header"><strong>Add Override</strong></div>
+  <div class="card-body">
+    <form method="post" action="">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="row g-2 align-items-end">
+        <div class="col-auto">
+          <label class="form-label mb-1">From Port</label>
+          {{ form.from_port_name }}
+          {% if form.from_port_name.errors %}<div class="text-danger small">{{ form.from_port_name.errors }}</div>{% endif %}
+        </div>
+        <div class="col-auto" style="max-width:100px;">
+          <label class="form-label mb-1">Signal</label>
+          {{ form.from_signal }}
+          {% if form.from_signal.errors %}<div class="text-danger small">{{ form.from_signal.errors }}</div>{% endif %}
+        </div>
+        <div class="col-auto">
+          <label class="form-label mb-1">To Port</label>
+          {{ form.to_port_name }}
+          {% if form.to_port_name.errors %}<div class="text-danger small">{{ form.to_port_name.errors }}</div>{% endif %}
+        </div>
+        <div class="col-auto" style="max-width:100px;">
+          <label class="form-label mb-1">Signal</label>
+          {{ form.to_signal }}
+          {% if form.to_signal.errors %}<div class="text-danger small">{{ form.to_signal.errors }}</div>{% endif %}
+        </div>
+        <div class="col-auto">
+          <label class="form-label mb-1">Bidirectional</label><br>
+          {{ form.is_bidirectional }}
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-sm">Add</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<p class="mt-3">
+  <a href="{% url 'plugins:netbox_innovace_fibre:device_signal_trace' device.pk %}"
+     class="btn btn-sm btn-primary">
+    Trace Signals for This Device
+  </a>
+</p>
+
+<h2 class="mt-4">Device Type Defaults ({{ device.device_type }})</h2>
+<p class="text-muted small">
+  {% if overrides %}
+  These defaults are currently <strong>not used</strong> because device-level overrides are present.
+  {% else %}
+  These defaults are currently <strong>active</strong> (no device-level overrides).
+  {% endif %}
+</p>
+<table class="table table-hover table-sm">
+  <thead>
+    <tr>
+      <th>From Port</th>
+      <th>From Signal</th>
+      <th>To Port</th>
+      <th>To Signal</th>
+      <th>Bidirectional</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for route in type_defaults %}
+    <tr>
+      <td>{{ route.from_port_name }}</td>
+      <td>{{ route.from_signal }}</td>
+      <td>{{ route.to_port_name }}</td>
+      <td>{{ route.to_signal }}</td>
+      <td>{% if route.is_bidirectional %}Yes{% else %}No{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="5" class="text-muted">No device type routing defaults defined.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+  <tbody>
+    {% for route in type_defaults %}
+    <tr>
+      <td>{{ route.from_port_name }}</td>
+      <td>{{ route.from_signal }}</td>
+      <td>{{ route.to_port_name }}</td>
+      <td>{{ route.to_signal }}</td>
+      <td>{% if route.is_bidirectional %}Yes{% else %}No{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="5" class="text-muted">No device type routing defaults defined.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

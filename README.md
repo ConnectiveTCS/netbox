@@ -100,6 +100,56 @@ This repository now includes a local Docker setup for development and testing.
 
 The compose stack starts four services: PostgreSQL, Redis, NetBox web, and a NetBox RQ worker.
 
+## Innovace Fibre Plugin
+
+The `netbox_innovace_fibre` plugin adds signal-level routing and tracing on top of NetBox's DCIM model. See [`CLAUDE.md`](CLAUDE.md) for a full reference.
+
+### Creating a Splitter Mapping (per-device signal overrides)
+
+Splitters (e.g. 1×MTP-12 → 24×LC) require custom per-device signal routings because the 1-to-N fan-out cannot be expressed as a single device-type default.
+
+**Step 1 — Open the device's Signal Routing page.**
+
+In NetBox, find the device you want to configure (e.g. via **DCIM → Devices**), note its ID from the URL, then navigate to:
+
+```
+http://localhost:8080/plugins/innovace-fibre/devices/<device-id>/signal-routings/
+```
+
+**Step 2 — Add override rows using the inline form.**
+
+At the bottom of the page you will see an **Add Override** form. Fill in:
+
+| Field | Example (MTP → LC) |
+|---|---|
+| From Port | `MTP` |
+| From Signal | `1` |
+| To Port | `LC-1` |
+| To Signal | `1` |
+| Bidirectional | unchecked |
+
+Click **Add**. Repeat for every output — e.g. 24 rows total for a 1×MTP-12 → 24×LC splitter:
+
+| From Port | From Signal | To Port | To Signal |
+|---|---|---|---|
+| MTP | 1 | LC-1 | 1 |
+| MTP | 2 | LC-2 | 1 |
+| … | … | … | … |
+| MTP | 12 | LC-12 | 1 |
+| MTP | 1 | LC-13 | 1 |
+| … | … | … | … |
+| MTP | 12 | LC-24 | 1 |
+
+> **Full-override semantics:** once *any* override row exists for a device, the signal tracer uses **only** those rows and ignores the device-type defaults entirely.
+
+**Step 3 — Delete a row.**
+
+Each row in the overrides table has a **Delete** button. Click it and confirm the prompt to remove that routing rule.
+
+**Step 4 — Verify the trace.**
+
+Click **Trace Signals for This Device** (or navigate to `/plugins/innovace-fibre/devices/<device-id>/signal-trace/?port=MTP&signal=1`). The page shows a banner confirming whether device-level overrides or device-type defaults are being used, and displays all resolved signal branches.
+
 ## Get Involved
 
 * Follow [@NetBoxOfficial](https://twitter.com/NetBoxOfficial) on Twitter!

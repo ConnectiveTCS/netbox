@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from dcim.models import DeviceType
+from dcim.models import Device, DeviceType
 from utilities.querysets import RestrictedQuerySet
 
 
@@ -83,5 +83,44 @@ class SignalRouting(models.Model):
         arrow = '<->' if self.is_bidirectional else '->'
         return (
             f"{self.device_type} {self.from_port_name}:{self.from_signal} "
+            f"{arrow} {self.to_port_name}:{self.to_signal}"
+        )
+
+
+class DeviceSignalRouting(models.Model):
+    """
+    Per-device signal routing override. When any rows exist for a device, the
+    Innovace signal tracer uses these instead of the device type's SignalRouting
+    entries. This allows individual devices (e.g. splitters) to carry custom
+    1-to-N port mappings that differ from the device type default.
+    """
+    objects = RestrictedQuerySet.as_manager()
+
+    device = models.ForeignKey(
+        to=Device,
+        on_delete=models.CASCADE,
+        related_name='innovace_signal_routings',
+    )
+    from_port_name = models.CharField(max_length=100)
+    from_signal = models.PositiveSmallIntegerField(default=1)
+    to_port_name = models.CharField(max_length=100)
+    to_signal = models.PositiveSmallIntegerField(default=1)
+    is_bidirectional = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ('device', 'from_port_name', 'from_signal', 'to_port_name', 'to_signal')
+        constraints = (
+            models.UniqueConstraint(
+                fields=('device', 'from_port_name', 'from_signal', 'to_port_name', 'to_signal'),
+                name='netbox_innovace_fibre_unique_device_signal_route',
+            ),
+        )
+        verbose_name = _('device signal routing')
+        verbose_name_plural = _('device signal routings')
+
+    def __str__(self):
+        arrow = '<->' if self.is_bidirectional else '->'
+        return (
+            f"{self.device} {self.from_port_name}:{self.from_signal} "
             f"{arrow} {self.to_port_name}:{self.to_signal}"
         )

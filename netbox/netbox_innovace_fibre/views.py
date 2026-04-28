@@ -1,10 +1,13 @@
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.views import View
 
-from dcim.models import DeviceType
+from dcim.models import Device, DeviceType
 
-from .models import SignalRouting
-from .tracer import trace_signal_path
+from .forms import DeviceSignalRoutingForm
+from .models import DeviceSignalRouting, SignalRouting
+from .tracer import trace_signal_path, trace_signal_path_for_device
 
 
 class TopologyView(View):
@@ -46,5 +49,72 @@ class SignalTraceView(View):
                 'paths': paths,
                 'port': port,
                 'signal': signal,
+            },
+        )
+
+
+class DeviceSignalRoutingView(View):
+    """Lists per-device signal routing overrides and shows device type defaults for reference."""
+    template_name = 'netbox_innovace_fibre/device_signal_routing.html'
+
+    def get(self, request, pk):
+        device = get_object_or_404(Device, pk=pk)
+        overrides = DeviceSignalRouting.objects.filter(device=device)
+        type_defaults = SignalRouting.objects.filter(device_type=device.device_type)
+        form = DeviceSignalRoutingForm()
+        return render(
+            request,
+            self.template_name,
+            {
+                'device': device,
+                'overrides': overrides,
+                'type_defaults': type_defaults,
+                'form': form,
+            },
+        )
+
+    def post(self, request, pk):
+        device = get_object_or_404(Device, pk=pk)
+        form = DeviceSignalRoutingForm(request.POST)
+        if form.is_valid():
+            routing = form.save(commit=False)
+            routing.device = device
+            routing.save()
+        return HttpResponseRedirect(
+            reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
+        )
+
+
+class DeviceSignalRoutingDeleteView(View):
+    """Deletes a single DeviceSignalRouting row."""
+
+    def post(self, request, pk, route_pk):
+        device = get_object_or_404(Device, pk=pk)
+        route = get_object_or_404(DeviceSignalRouting, pk=route_pk, device=device)
+        route.delete()
+        return HttpResponseRedirect(
+            reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
+        )
+
+
+class DeviceSignalTraceView(View):
+    """Signal path trace for a specific device instance."""
+    template_name = 'netbox_innovace_fibre/device_signal_trace.html'
+
+    def get(self, request, pk):
+        device = get_object_or_404(Device, pk=pk)
+        port = request.GET.get('port')
+        signal = int(request.GET.get('signal', '1'))
+        paths = trace_signal_path_for_device(device=device, port_name=port, signal=signal)
+        has_overrides = DeviceSignalRouting.objects.filter(device=device).exists()
+        return render(
+            request,
+            self.template_name,
+            {
+                'device': device,
+                'paths': paths,
+                'port': port,
+                'signal': signal,
+                'has_overrides': has_overrides,
             },
         )

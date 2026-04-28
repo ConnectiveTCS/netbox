@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from netbox_innovace_fibre.models import DeviceTypeSignalMeta, SignalRouting
+from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, SignalRouting
 
 
 class DeviceTypeSignalMetaSerializer(serializers.ModelSerializer):
@@ -23,6 +23,20 @@ class SignalRoutingSerializer(serializers.ModelSerializer):
         fields = (
             'id',
             'device_type',
+            'from_port_name',
+            'from_signal',
+            'to_port_name',
+            'to_signal',
+            'is_bidirectional',
+        )
+
+
+class DeviceSignalRoutingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeviceSignalRouting
+        fields = (
+            'id',
+            'device',
             'from_port_name',
             'from_signal',
             'to_port_name',
