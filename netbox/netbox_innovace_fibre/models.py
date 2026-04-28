@@ -1,7 +1,8 @@
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from dcim.models import Device, DeviceType
+from dcim.models import Device, DeviceType, Site
 from utilities.querysets import RestrictedQuerySet
 
 
@@ -124,3 +125,40 @@ class DeviceSignalRouting(models.Model):
             f"{self.device} {self.from_port_name}:{self.from_signal} "
             f"{arrow} {self.to_port_name}:{self.to_signal}"
         )
+
+
+class FloorPlanVersion(models.Model):
+    """
+    Versioned floor plan layout for a site.
+    Each Save creates a new row; history is preserved.
+    The latest record (highest pk) for a site is the active layout.
+
+    config JSON shape:
+    {
+      "floor": {"width": 200, "depth": 150, "gridSnap": 12, "unit": "in"},
+      "racks": [{"rackId": 1, "x": 24.0, "z": 0.0, "orientation": "N"}],
+      "railFL": 2, "railFR": 2, "railRL": 2, "railRR": 2
+    }
+    """
+    site = models.ForeignKey(
+        to=Site,
+        on_delete=models.CASCADE,
+        related_name='innovace_floor_plans',
+    )
+    created_by = models.ForeignKey(
+        to=get_user_model(),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    config = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = _('floor plan version')
+        verbose_name_plural = _('floor plan versions')
+
+    def __str__(self):
+        return f"FloorPlan({self.site}, {self.created_at})"

@@ -5,6 +5,7 @@ from .views import (
     DeviceSignalRoutingViewSet,
     DeviceSignalTraceAPIView,
     DeviceTypeSignalMetaViewSet,
+    FloorPlanAPIView,
     Rack3DDataAPIView,
     RackListAPIView,
     SignalRoutingViewSet,
@@ -23,5 +24,6 @@ urlpatterns = [
     path('topology/', TopologyDataAPIView.as_view(), name='topology-data'),
     path('racks/', RackListAPIView.as_view(), name='rack-list'),
     path('racks/<int:pk>/3d-data/', Rack3DDataAPIView.as_view(), name='rack-3d-data'),
+    path('floor-plan/', FloorPlanAPIView.as_view(), name='floor-plan'),
 ]
 urlpatterns += router.urls

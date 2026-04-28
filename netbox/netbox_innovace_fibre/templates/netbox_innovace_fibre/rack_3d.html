@@ -346,6 +346,19 @@
   }
 
   /* ── Layout Manager overlay ──────────────────────────── */
+  #rack3d-root {
+    --r3d-canvas-bg:   #0d1018;
+    --r3d-canvas-grid: #1a2030;
+    --r3d-rack-fill:   #1e2d42;
+    --r3d-rack-sel:    #1a3a6a;
+  }
+  #rack3d-root[data-theme="light"] {
+    --r3d-canvas-bg:   #dde4ef;
+    --r3d-canvas-grid: #c8d0e0;
+    --r3d-rack-fill:   #c8daf5;
+    --r3d-rack-sel:    #93c5fd;
+  }
+
   #r3d-layout-panel {
     position: absolute;
     inset: 0;
@@ -353,205 +366,191 @@
     background: var(--r3d-bg);
     display: flex;
     flex-direction: column;
-    transition: opacity 0.2s;
   }
-
-  #r3d-layout-panel.r3d-layout-hidden {
-    display: none;
-  }
+  #r3d-layout-panel.r3d-layout-hidden { display: none; }
 
   #r3d-layout-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 16px;
+    padding: 8px 14px;
     background: var(--r3d-panel);
     border-bottom: 1px solid var(--r3d-border);
     flex-shrink: 0;
   }
+  #r3d-layout-header > span { font-size: 14px; font-weight: 600; color: var(--r3d-text); }
+  .r3d-layout-actions { display: flex; gap: 6px; align-items: center; }
 
-  #r3d-layout-header span {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--r3d-text);
-  }
+  #r3d-layout-body { flex: 1; display: flex; overflow: hidden; }
 
-  #r3d-layout-header .r3d-header-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  #r3d-layout-body {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-  }
-
-  /* Left: config + available racks */
+  /* Sidebar */
   #r3d-layout-sidebar {
-    width: 240px;
+    width: 220px;
     flex-shrink: 0;
     background: var(--r3d-panel);
     border-right: 1px solid var(--r3d-border);
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    padding: 12px;
-    gap: 14px;
+    overflow: hidden;
   }
-
-  .r3d-layout-field {
+  .r3d-lsb-section {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--r3d-border);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
   }
-
-  .r3d-layout-field label {
+  .r3d-lsb-section h4 {
+    margin: 0;
     font-size: 11px;
     font-weight: 600;
     color: var(--r3d-text-dim);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
-
-  .r3d-layout-field input {
+  .r3d-field { display: flex; align-items: center; gap: 6px; }
+  .r3d-field label { font-size: 11px; color: var(--r3d-text-dim); min-width: 70px; }
+  .r3d-field input, .r3d-field select {
+    flex: 1;
     background: var(--r3d-input-bg);
     color: var(--r3d-text);
     border: 1px solid var(--r3d-border);
-    border-radius: 4px;
-    padding: 4px 8px;
+    border-radius: 3px;
+    padding: 3px 6px;
     font-size: 12px;
   }
+  .r3d-field input:focus, .r3d-field select:focus { border-color: var(--r3d-accent); outline: none; }
 
-  .r3d-layout-field input:focus {
+  #r3d-unplaced-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .r3d-unplaced-rack {
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--r3d-input-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    cursor: grab;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+  }
+  .r3d-unplaced-rack:hover { border-color: var(--r3d-accent); background: var(--r3d-hover); }
+  .r3d-unplaced-rack.dragging { opacity: 0.5; }
+
+  /* Canvas area */
+  #r3d-canvas-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 12px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 12px;
+    background: var(--r3d-bg);
+  }
+  #r3d-floor-canvas {
+    display: block;
+    cursor: crosshair;
+    border: 1px solid var(--r3d-border);
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  #r3d-floor-canvas.drag-over {
     border-color: var(--r3d-accent);
-    outline: none;
+    box-shadow: 0 0 0 2px rgba(74,158,255,0.3);
   }
 
-  #r3d-layout-sidebar h4 {
+  /* Properties panel */
+  #r3d-rack-props {
+    width: 200px;
+    flex-shrink: 0;
+    background: var(--r3d-panel);
+    border: 1px solid var(--r3d-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-self: flex-start;
+  }
+  #r3d-rack-props.r3d-props-hidden { display: none; }
+  #r3d-rack-props h4 {
     margin: 0;
     font-size: 12px;
     font-weight: 600;
-    color: var(--r3d-text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--r3d-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-
-  #r3d-available-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-  }
-
-  .available-rack-chip {
-    padding: 5px 8px;
-    border-radius: 4px;
-    font-size: 11px;
+  .r3d-prop-row { display: flex; flex-direction: column; gap: 3px; }
+  .r3d-prop-row label { font-size: 10px; color: var(--r3d-text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .r3d-prop-row input, .r3d-prop-row select {
     background: var(--r3d-input-bg);
     color: var(--r3d-text);
     border: 1px solid var(--r3d-border);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .available-rack-chip.placed {
-    opacity: 0.4;
-  }
-
-  /* Right: floor grid */
-  #r3d-layout-grid-wrap {
-    flex: 1;
-    overflow: auto;
-    padding: 16px;
-  }
-
-  #r3d-layout-grid-wrap h4 {
-    margin: 0 0 10px;
+    border-radius: 3px;
+    padding: 3px 6px;
     font-size: 12px;
-    font-weight: 600;
-    color: var(--r3d-text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  #r3d-floor-grid {
-    display: grid;
-    gap: 6px;
-  }
-
-  .layout-cell {
-    min-height: 56px;
-    min-width: 110px;
-    border: 1px dashed var(--r3d-border);
-    border-radius: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: border-color 0.15s;
-    overflow: hidden;
-  }
-
-  .layout-cell:hover {
-    border-color: var(--r3d-accent);
-  }
-
-  .layout-cell-rack {
     width: 100%;
-    height: 100%;
-    padding: 5px 8px;
-    background: rgba(74, 158, 255, 0.1);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4px;
-    min-height: 54px;
   }
-
-  #rack3d-root[data-theme="light"] .layout-cell-rack {
-    background: rgba(37, 99, 235, 0.08);
-  }
-
-  .layout-cell-rack span {
-    font-size: 11px;
-    color: var(--r3d-text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-  }
-
-  .layout-cell-remove {
-    flex-shrink: 0;
-    background: none;
-    border: none;
-    color: var(--r3d-text-dim);
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    padding: 0 2px;
-  }
-
-  .layout-cell-remove:hover {
+  .r3d-prop-row input:focus, .r3d-prop-row select:focus { border-color: var(--r3d-accent); outline: none; }
+  #btn-prop-remove {
+    background: rgba(231,76,60,0.1);
     color: #e74c3c;
-  }
-
-  .layout-cell select {
-    background: transparent;
-    color: var(--r3d-text-dim);
-    border: none;
-    font-size: 12px;
+    border: 1px solid rgba(231,76,60,0.3);
+    border-radius: 4px;
+    padding: 4px;
+    font-size: 11px;
     cursor: pointer;
-    outline: none;
-    width: 100%;
-    text-align: center;
+    margin-top: 4px;
   }
+  #btn-prop-remove:hover { background: rgba(231,76,60,0.2); }
 
-  .layout-cell select:hover {
-    color: var(--r3d-accent);
+  /* Context menu */
+  #r3d-ctx-menu {
+    position: fixed;
+    z-index: 9999;
+    background: var(--r3d-panel);
+    border: 1px solid var(--r3d-border);
+    border-radius: 5px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    min-width: 150px;
+    overflow: hidden;
   }
+  #r3d-ctx-menu.r3d-ctx-hidden { display: none; }
+  .r3d-ctx-item { padding: 7px 14px; font-size: 12px; color: var(--r3d-text); cursor: pointer; }
+  .r3d-ctx-item:hover { background: var(--r3d-hover); color: var(--r3d-accent); }
+  .r3d-ctx-item.danger:hover { color: #e74c3c; }
+  .r3d-ctx-sep { border: none; border-top: 1px solid var(--r3d-border); margin: 2px 0; }
+
+  /* Save toast */
+  #r3d-save-toast {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--r3d-panel);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 300;
+    white-space: nowrap;
+  }
+  #r3d-save-toast.visible { opacity: 1; }
 
   /* ── Device info panel ───────────────────────────────── */
   #r3d-info {
@@ -783,46 +782,109 @@
 
   {# ── Layout Manager overlay ───────────────────────────── #}
   <div id="r3d-layout-panel" class="r3d-layout-hidden">
+
     <div id="r3d-layout-header">
-      <span><i class="mdi mdi-floor-plan"></i>&nbsp;Layout Manager</span>
-      <div class="r3d-header-actions">
-        <button id="btn-layout-apply" class="r3d-btn active-btn">✓ Apply Layout</button>
+      <span><i class="mdi mdi-floor-plan"></i>&nbsp;Floor Plan Editor</span>
+      <div class="r3d-layout-actions">
+        <span id="r3d-save-status" style="font-size:11px;color:var(--r3d-text-dim);margin-right:4px"></span>
+        <button id="btn-layout-save"  class="r3d-btn active-btn">💾 Save Layout</button>
+        <button id="btn-layout-apply" class="r3d-btn">▶ Render 3D</button>
         <button id="btn-layout-close" class="r3d-btn">✕ Close</button>
       </div>
     </div>
+
     <div id="r3d-layout-body">
 
+      {# Left sidebar #}
       <div id="r3d-layout-sidebar">
-        <div class="r3d-layout-field">
-          <label>Rows</label>
-          <input type="number" id="cfg-rows" class="no-ts" min="1" max="10" value="2">
-        </div>
-        <div class="r3d-layout-field">
-          <label>Columns</label>
-          <input type="number" id="cfg-cols" class="no-ts" min="1" max="20" value="4">
-        </div>
-        <div class="r3d-layout-field">
-          <label>Cell Width (units)</label>
-          <input type="number" id="cfg-cell-w" class="no-ts" min="20" max="120" step="5" value="30">
-        </div>
-        <div class="r3d-layout-field">
-          <label>Cell Depth (units)</label>
-          <input type="number" id="cfg-cell-d" class="no-ts" min="20" max="120" step="5" value="50">
-        </div>
-        <button id="btn-update-grid" class="r3d-btn" style="margin-top:4px">↺ Rebuild Grid</button>
 
-        <hr class="r3d-config-divider" style="margin:0">
+        <div class="r3d-lsb-section">
+          <h4>Floor Size</h4>
+          <div class="r3d-field">
+            <label>Width</label>
+            <input type="number" id="cfg-floor-w" min="50" max="2000" step="10" value="400">
+          </div>
+          <div class="r3d-field">
+            <label>Depth</label>
+            <input type="number" id="cfg-floor-d" min="50" max="2000" step="10" value="300">
+          </div>
+          <div class="r3d-field">
+            <label>Unit</label>
+            <select id="cfg-floor-unit" class="no-ts">
+              <option value="in" selected>inches</option>
+              <option value="ft">feet</option>
+              <option value="mm">mm</option>
+              <option value="m">metres</option>
+            </select>
+          </div>
+        </div>
 
-        <h4>Available Racks</h4>
-        <div id="r3d-available-list"></div>
-      </div>
+        <div class="r3d-lsb-section">
+          <h4>Grid Snap</h4>
+          <div class="r3d-field">
+            <label>Snap Size</label>
+            <input type="number" id="cfg-grid-snap" min="1" max="120" step="1" value="12">
+          </div>
+          <div class="r3d-field" style="gap:4px">
+            <label style="min-width:unset">
+              <input type="checkbox" id="cfg-snap-on" checked style="margin-right:4px;accent-color:var(--r3d-accent)">
+              Snap enabled
+            </label>
+          </div>
+        </div>
 
-      <div id="r3d-layout-grid-wrap">
-        <h4>Floor Plan — click + to assign a rack, × to remove</h4>
-        <div id="r3d-floor-grid"></div>
-      </div>
+        <div class="r3d-lsb-section">
+          <h4>Rack Footprint Depth</h4>
+          <div class="r3d-field">
+            <label>Depth</label>
+            <input type="number" id="cfg-rack-depth" min="10" max="200" step="2" value="40"
+                   title="Rack footprint depth in floor units (e.g. inches)">
+          </div>
+        </div>
 
-    </div>
+        <div class="r3d-lsb-section" style="flex:1;overflow:hidden;min-height:0">
+          <h4>Unplaced Racks — drag onto floor</h4>
+          <div id="r3d-unplaced-wrap"></div>
+        </div>
+
+      </div>{# /r3d-layout-sidebar #}
+
+      {# Canvas + properties #}
+      <div id="r3d-canvas-wrap">
+        <canvas id="r3d-floor-canvas"></canvas>
+
+        <div id="r3d-rack-props" class="r3d-props-hidden">
+          <h4 id="prop-rack-name">Rack</h4>
+          <div class="r3d-prop-row">
+            <label>X position</label>
+            <input type="number" id="prop-x" step="1">
+          </div>
+          <div class="r3d-prop-row">
+            <label>Z position</label>
+            <input type="number" id="prop-z" step="1">
+          </div>
+          <div class="r3d-prop-row">
+            <label>Orientation</label>
+            <select id="prop-orient" class="no-ts">
+              <option value="N">N — Front faces North ↑</option>
+              <option value="E">E — Front faces East →</option>
+              <option value="S">S — Front faces South ↓</option>
+              <option value="W">W — Front faces West ←</option>
+            </select>
+          </div>
+          <button id="btn-prop-remove">🗑 Remove from floor</button>
+        </div>
+      </div>{# /r3d-canvas-wrap #}
+
+    </div>{# /r3d-layout-body #}
+  </div>{# /r3d-layout-panel #}
+
+  {# ── Right-click context menu ─────────────────────────── #}
+  <div id="r3d-ctx-menu" class="r3d-ctx-hidden">
+    <div class="r3d-ctx-item" data-action="rotateCW">↻ Rotate CW (+90°)</div>
+    <div class="r3d-ctx-item" data-action="rotateCCW">↺ Rotate CCW (−90°)</div>
+    <hr class="r3d-ctx-sep">
+    <div class="r3d-ctx-item danger" data-action="remove">🗑 Remove</div>
   </div>
 
   {# ── Device info panel ────────────────────────────────── #}
@@ -834,7 +896,10 @@
     <div id="r3d-info-body"></div>
   </div>
 
-</div>
+  {# ── Save toast ───────────────────────────────────────── #}
+  <div id="r3d-save-toast"></div>
+
+</div>{# /rack3d-root #}
 {% endblock page %}
 
 {% block javascript %}

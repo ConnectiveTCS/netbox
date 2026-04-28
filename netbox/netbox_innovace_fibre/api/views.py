@@ -6,7 +6,7 @@ from rest_framework.viewsets import ModelViewSet
 from netbox.api.authentication import IsAuthenticatedOrLoginNotRequired
 
 from dcim.models import Cable, CableTermination, Device, DeviceRole, Rack, Site
-from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, SignalRouting
+from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, FloorPlanVersion, SignalRouting
 from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_for_device
 
 from .serializers import DeviceSignalRoutingSerializer, DeviceTypeSignalMetaSerializer, SignalRoutingSerializer
@@ -221,6 +221,31 @@ class Rack3DDataAPIView(APIView):
             },
             'devices': device_list,
         })
+
+
+class FloorPlanAPIView(APIView):
+    """
+    GET  ?site_id=<id>  — return latest saved config for that site (or {} if none)
+    POST {site_id, config} — create a new FloorPlanVersion row (versioned history)
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request):
+        site_id = request.GET.get('site_id')
+        if not site_id:
+            return Response({'config': {}})
+        version = FloorPlanVersion.objects.filter(site_id=site_id).first()
+        return Response({'config': version.config if version else {}, 'version_id': version.pk if version else None})
+
+    def post(self, request):
+        site_id = request.data.get('site_id')
+        config  = request.data.get('config', {})
+        if not site_id:
+            return Response({'error': 'site_id required'}, status=400)
+        site = get_object_or_404(Site, pk=site_id)
+        user = request.user if request.user.is_authenticated else None
+        version = FloorPlanVersion.objects.create(site=site, created_by=user, config=config)
+        return Response({'version_id': version.pk, 'created_at': version.created_at}, status=201)
 
 
 def _serialise_device(dev):
