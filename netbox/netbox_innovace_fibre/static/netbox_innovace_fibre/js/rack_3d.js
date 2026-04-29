@@ -321,9 +321,9 @@ class RackScene {
         // Posts sit flush inside the cabinet body (no protrusion beyond depth)
         const corners = [
             { sx: -1, zSign: -1 },
-            { sx:  1, zSign: -1 },
-            { sx: -1, zSign:  1 },
-            { sx:  1, zSign:  1 },
+            { sx: 1, zSign: -1 },
+            { sx: -1, zSign: 1 },
+            { sx: 1, zSign: 1 },
         ];
         for (const { sx, zSign } of corners) {
             const postGeo = new THREE.BoxGeometry(POST_W, totalH, POST_W);
