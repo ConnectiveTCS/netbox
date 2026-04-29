@@ -13,8 +13,6 @@ const LABEL_SHOW_DIST = 60;
 const LS_SETTINGS = 'iff_rack3d_settings';
 
 const DEPTH_MAP = { realistic: 28.0, flat: 4.0, schematic: 1.2 };
-const FAN_ZONE_H = 3.5;      // height of fan module added above device area
-const FAN_ZONE_OFFSET = 2.0; // air gap between top device and fan tray
 
 function hashColor(str) {
     let h = 0x811c9dc5;
@@ -186,7 +184,7 @@ class RackScene {
 
             // Rack name label floating above the cabinet
             const rackSc = parseFloat(settings.scale) || 1;
-            const rackTop = rd.rack.u_height * U_SCALE_BASE * rackSc + (FAN_ZONE_OFFSET + FAN_ZONE_H) * rackSc + 2.0;
+            const rackTop = rd.rack.u_height * U_SCALE_BASE * rackSc + 2.0;
             const nameDiv = document.createElement('div');
             nameDiv.className = 'r3d-rack-label';
             nameDiv.textContent = rd.rack.name;
@@ -212,11 +210,10 @@ class RackScene {
     resetCamera(rack, settings) {
         const sc = parseFloat(settings.scale) || 1;
         const totalH = rack.u_height * U_SCALE_BASE * sc;
-        const extH = totalH + (FAN_ZONE_OFFSET + FAN_ZONE_H) * sc;
         const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
-        const target = new THREE.Vector3(0, extH * 0.5, 0);
-        const dist = Math.max(extH, RACK_WIDTH) * 1.6 + depth;
-        this._camera.position.set(RACK_WIDTH * 0.8, extH * 0.55, dist);
+        const target = new THREE.Vector3(0, totalH * 0.5, 0);
+        const dist = Math.max(totalH, RACK_WIDTH) * 1.6 + depth;
+        this._camera.position.set(RACK_WIDTH * 0.8, totalH * 0.55, dist);
         this._camera.lookAt(target);
         this._controls.target.copy(target);
         this._controls.update();
@@ -302,60 +299,46 @@ class RackScene {
         const target = parent || this._scene;
         const sc = parseFloat(settings.scale) || 1;
         const totalH = rack.u_height * U_SCALE_BASE * sc;
-        const extH = totalH + (FAN_ZONE_OFFSET + FAN_ZONE_H) * sc;
         const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
         const colors = themeColors(settings.theme);
         const mat = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.75, roughness: 0.35 });
 
         // ── Solid cabinet body ───────────────────────────────────────────────
+        // Rendered first (behind posts) so the dark post corners frame it.
         // Six-face material array: [+X, -X, +Y, -Y, +Z(front), -Z(back)]
         const bodyMat = new THREE.MeshStandardMaterial({ color: colors.rackBody, metalness: 0.12, roughness: 0.65 });
         const topMat = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.65, roughness: 0.40 });
         const invisMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0 });
         const cabinetMats = [bodyMat, bodyMat, topMat, bodyMat, invisMat, invisMat];
-        const cabinetGeo = new THREE.BoxGeometry(RACK_WIDTH, extH, depth);
+        const cabinetGeo = new THREE.BoxGeometry(RACK_WIDTH, totalH, depth);
         const cabinet = new THREE.Mesh(cabinetGeo, cabinetMats);
-        cabinet.position.set(offset.x, offset.y + extH / 2, offset.z);
+        cabinet.position.set(offset.x, offset.y + totalH / 2, offset.z);
         target.add(cabinet);
         if (!parent) this._meshes.push(cabinet);
 
-        const railFL = Math.max(0.5, parseFloat(settings.railFL) || 2);
-        const railFR = Math.max(0.5, parseFloat(settings.railFR) || 2);
-        const railRL = Math.max(0.5, parseFloat(settings.railRL) || 2);
-        const railRR = Math.max(0.5, parseFloat(settings.railRR) || 2);
-
         const hw = RACK_WIDTH / 2 + POST_W / 2;
 
+        // Posts sit flush inside the cabinet body (no protrusion beyond depth)
         const corners = [
-            { sx: -1, zSign: -1, rd: railFL },
-            { sx: 1, zSign: -1, rd: railFR },
-            { sx: -1, zSign: 1, rd: railRL },
-            { sx: 1, zSign: 1, rd: railRR },
+            { sx: -1, zSign: -1 },
+            { sx:  1, zSign: -1 },
+            { sx: -1, zSign:  1 },
+            { sx:  1, zSign:  1 },
         ];
-        for (const { sx, zSign, rd } of corners) {
-            const postGeo = new THREE.BoxGeometry(POST_W, extH, rd);
-            const zPos = zSign * (depth / 2 + rd / 2);
+        for (const { sx, zSign } of corners) {
+            const postGeo = new THREE.BoxGeometry(POST_W, totalH, POST_W);
+            const zPos = zSign * (depth / 2 - POST_W / 2);
             const m = new THREE.Mesh(postGeo, mat);
-            m.position.set(offset.x + sx * hw, offset.y + extH / 2, offset.z + zPos);
+            m.position.set(offset.x + sx * hw, offset.y + totalH / 2, offset.z + zPos);
             target.add(m);
             if (!parent) this._meshes.push(m);
         }
 
-        const frontExt = Math.max(railFL, railFR);
-        const rearExt = Math.max(railRL, railRR);
-        const railSpan = depth + frontExt + rearExt;
-        const railZOff = (rearExt - frontExt) / 2;
-        const railGeo = new THREE.BoxGeometry(RACK_WIDTH + POST_W * 2 + 0.1, RAIL_H, railSpan);
-        for (const y of [0, extH]) {
+        // Top and bottom rails span only the cabinet depth (no overhang)
+        const railGeo = new THREE.BoxGeometry(RACK_WIDTH + POST_W * 2 + 0.1, RAIL_H, depth);
+        for (const y of [0, totalH]) {
             const m = new THREE.Mesh(railGeo, mat);
-            m.position.set(offset.x, offset.y + y, offset.z + railZOff);
-            target.add(m);
-            if (!parent) this._meshes.push(m);
-        }
-        // Divider rail at the boundary between device area and fan zone
-        {
-            const m = new THREE.Mesh(railGeo, mat);
-            m.position.set(offset.x, offset.y + totalH, offset.z + railZOff);
+            m.position.set(offset.x, offset.y + y, offset.z);
             target.add(m);
             if (!parent) this._meshes.push(m);
         }
@@ -363,80 +346,13 @@ class RackScene {
         const sideMat = new THREE.MeshStandardMaterial({
             color: colors.side, transparent: true, opacity: 0.06, side: THREE.DoubleSide,
         });
-        const sideGeo = new THREE.PlaneGeometry(railSpan, extH);
+        const sideGeo = new THREE.PlaneGeometry(depth, totalH);
         for (const sx of [-1, 1]) {
             const m = new THREE.Mesh(sideGeo, sideMat);
             m.rotation.y = Math.PI / 2;
-            m.position.set(offset.x + sx * (RACK_WIDTH / 2 + POST_W), offset.y + extH / 2, offset.z + railZOff);
+            m.position.set(offset.x + sx * (RACK_WIDTH / 2 + POST_W), offset.y + totalH / 2, offset.z);
             target.add(m);
             if (!parent) this._meshes.push(m);
-        }
-
-        this._buildFans(totalH, depth, settings, offset, parent);
-    }
-
-    _buildFans(totalH, depth, settings, offset, parent) {
-        const target = parent || this._scene;
-        const sc = parseFloat(settings.scale) || 1;
-        const fanZoneH = FAN_ZONE_H * sc;
-        const fanZoneOff = FAN_ZONE_OFFSET * sc;
-        const fanY = offset.y + totalH + fanZoneOff + fanZoneH / 2;
-        const fz = offset.z + depth / 2 - 0.5;
-        const add = m => { target.add(m); if (!parent) this._meshes.push(m); };
-
-        // Fan tray backing plate (set back inside the rack)
-        const trayMat = new THREE.MeshStandardMaterial({ color: 0x0c0f14, metalness: 0.5, roughness: 0.7 });
-        const tray = new THREE.Mesh(
-            new THREE.BoxGeometry(RACK_WIDTH - POST_W * 2 - 0.2, fanZoneH - 0.3, depth * 0.18),
-            trayMat
-        );
-        tray.position.set(offset.x, fanY, offset.z + depth / 2 - depth * 0.09 - 0.6);
-        add(tray);
-
-        const fanCount = 4;
-        const availW = RACK_WIDTH - POST_W * 2 - 1.0;
-        const spacing = availW / fanCount;
-        const fanR = Math.min(fanZoneH / 2 - 0.2, spacing / 2 - 0.3);
-
-        const ringMat  = new THREE.MeshStandardMaterial({ color: 0x1c2030, metalness: 0.70, roughness: 0.30 });
-        const bladeMat = new THREE.MeshStandardMaterial({ color: 0x38404e, metalness: 0.50, roughness: 0.60 });
-        const discMat  = new THREE.MeshStandardMaterial({ color: 0x080b0f, metalness: 0.30, roughness: 0.80 });
-        const hubMat   = new THREE.MeshStandardMaterial({ color: 0x888ea0, metalness: 0.85, roughness: 0.15 });
-
-        for (let i = 0; i < fanCount; i++) {
-            const fx = offset.x - availW / 2 + spacing * (i + 0.5);
-
-            // Torus ring — default XY plane faces +Z (camera side)
-            const ring = new THREE.Mesh(new THREE.TorusGeometry(fanR, 0.11, 8, 32), ringMat);
-            ring.position.set(fx, fanY, fz);
-            add(ring);
-
-            // Dark disc behind the blades
-            const disc = new THREE.Mesh(
-                new THREE.CylinderGeometry(fanR - 0.12, fanR - 0.12, 0.06, 32), discMat);
-            disc.rotation.x = Math.PI / 2;
-            disc.position.set(fx, fanY, fz - 0.05);
-            add(disc);
-
-            // 7 swept blades arranged radially
-            for (let b = 0; b < 7; b++) {
-                const angle = (b / 7) * Math.PI * 2;
-                const blade = new THREE.Mesh(
-                    new THREE.BoxGeometry(fanR * 0.62, fanR * 0.20, 0.04), bladeMat);
-                blade.rotation.z = angle + 0.35;
-                blade.position.set(
-                    fx + Math.cos(angle) * fanR * 0.40,
-                    fanY + Math.sin(angle) * fanR * 0.40,
-                    fz);
-                add(blade);
-            }
-
-            // Centre hub
-            const hub = new THREE.Mesh(
-                new THREE.CylinderGeometry(fanR * 0.13, fanR * 0.13, 0.18, 16), hubMat);
-            hub.rotation.x = Math.PI / 2;
-            hub.position.set(fx, fanY, fz + 0.08);
-            add(hub);
         }
     }
 
