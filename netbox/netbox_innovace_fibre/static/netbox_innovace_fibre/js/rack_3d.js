@@ -485,6 +485,11 @@ class RackScene {
     }
 
     _clear() {
+        // Explicitly remove CSS2D DOM elements — the CSS2DRenderer does not
+        // automatically clean them up when their objects leave the scene.
+        for (const label of this._labels) {
+            label.element?.parentNode?.removeChild(label.element);
+        }
         for (const obj of this._meshes) {
             this._scene.remove(obj);
             obj.traverse(child => {
