@@ -640,11 +640,7 @@ class RackScene {
       0.12,
       depth * 0.74,
     );
-    for (
-      let gy = offset.y;
-      gy <= offset.y + totalH;
-      gy += U_SCALE_BASE * 4
-    ) {
+    for (let gy = offset.y; gy <= offset.y + totalH; gy += U_SCALE_BASE * 4) {
       for (const side of [-1, 1]) {
         const tie = new THREE.Mesh(tieBarGeo, cableTieMat);
         tie.position.set(

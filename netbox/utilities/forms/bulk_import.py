@@ -54,7 +54,13 @@ class BulkImportForm(ChangelogMessageMixin, BackgroundJobMixin, SyncedDataMixin,
         if import_method == ImportMethodChoices.UPLOAD:
             self.upload_file = 'upload_file'
             file = self.files.get('upload_file')
-            data = file.read().decode('utf-8-sig')
+            raw = file.read()
+            try:
+                data = raw.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                # Fall back to latin-1 for files exported from Excel/Windows
+                # that contain non-UTF-8 characters (e.g. CP1252 byte sequences).
+                data = raw.decode('latin-1')
         elif import_method == ImportMethodChoices.DATA_FILE:
             data = self.cleaned_data['data_file'].data_as_string
         else:
