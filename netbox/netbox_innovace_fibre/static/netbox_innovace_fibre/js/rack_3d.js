@@ -16,6 +16,8 @@ const LABEL_SHOW_DIST = 60;
 const LS_SETTINGS = "iff_rack3d_settings";
 
 const DEPTH_MAP = { realistic: 28.0, flat: 4.0, schematic: 1.2 };
+// Side cable-routing channels added to each rack (15 cm per side, converted to scene-inches)
+const CABLE_CHANNEL_W = 15 / 25.4; // ≈ 5.91 scene-inches per side
 
 function hashColor(str) {
   let h = 0x811c9dc5;
@@ -556,7 +558,9 @@ class RackScene {
     const totalH = rack.u_height * U_SCALE_BASE * sc;
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
     const colors = themeColors(settings.theme);
-    const outerW = RACK_WIDTH + POST_W * 2; // 20" — full cabinet width incl. side panels
+    const outerW = RACK_WIDTH + POST_W * 2; // 20" — standard device-zone width
+    // Total shell width expands to include cable routing channels on each side
+    const totalW = outerW + 2 * CABLE_CHANNEL_W;
 
     // ── Materials ────────────────────────────────────────────────────────
     const shellMat = new THREE.MeshStandardMaterial({
@@ -598,11 +602,61 @@ class RackScene {
       return m;
     };
 
-    const shellGeo = new THREE.BoxGeometry(outerW, totalH, depth);
+    const shellGeo = new THREE.BoxGeometry(totalW, totalH, depth);
     const shell = new THREE.Mesh(shellGeo, shellMats);
     shell.position.set(offset.x, offset.y + totalH / 2, offset.z);
     target.add(_regFrame(shell));
     if (!parent) this._meshes.push(shell);
+
+    // ── Cable management side channels ────────────────────────────────────
+    const cableChMat = new THREE.MeshStandardMaterial({
+      color: 0x131c28,
+      metalness: 0.12,
+      roughness: 0.94,
+    });
+    const chGeo = new THREE.BoxGeometry(
+      CABLE_CHANNEL_W - 0.06,
+      totalH - 0.06,
+      depth - 0.08,
+    );
+    for (const side of [-1, 1]) {
+      const ch = new THREE.Mesh(chGeo, cableChMat);
+      ch.position.set(
+        offset.x + side * (outerW / 2 + CABLE_CHANNEL_W / 2),
+        offset.y + totalH / 2,
+        offset.z,
+      );
+      target.add(_regFrame(ch));
+      if (!parent) this._meshes.push(ch);
+    }
+    // Horizontal cable-ring bars every 4U for visual detail
+    const cableTieMat = new THREE.MeshStandardMaterial({
+      color: 0x2d4060,
+      metalness: 0.45,
+      roughness: 0.55,
+    });
+    const tieBarGeo = new THREE.BoxGeometry(
+      CABLE_CHANNEL_W * 0.82,
+      0.12,
+      depth * 0.74,
+    );
+    for (
+      let gy = offset.y;
+      gy <= offset.y + totalH;
+      gy += U_SCALE_BASE * 4
+    ) {
+      for (const side of [-1, 1]) {
+        const tie = new THREE.Mesh(tieBarGeo, cableTieMat);
+        tie.position.set(
+          offset.x + side * (outerW / 2 + CABLE_CHANNEL_W / 2),
+          gy,
+          offset.z,
+        );
+        tie.raycast = () => {}; // non-pickable
+        target.add(tie);
+        if (!parent) this._meshes.push(tie);
+      }
+    }
 
     // ── Internal mounting rails (4 vertical silver steel posts) ──────────
     const railX = RACK_WIDTH / 2 - POST_W / 2;
