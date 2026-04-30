@@ -1,0 +1,86 @@
+{% extends 'base/layout.html' %}
+{% load static %}
+
+{% block title %}Bay Layout Editor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3" id="iff-bay-editor-root" data-device-id="{{ device.pk }}">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1">Patch Enclosure Bay Layout</h2>
+      <div class="text-muted small">
+        {{ device }}
+        {% if not is_patch_enclosure %}
+          <span class="badge bg-warning text-dark ms-2">Role is not Patch Enclosure</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/dcim/devices/{{ device.pk }}/">Open Device</a>
+      <a class="btn btn-outline-primary btn-sm" href="{% url 'plugins:netbox_innovace_fibre:rack_3d' %}">Back to 3D Rack</a>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+      <button id="iff-save" class="btn btn-primary btn-sm">Save Layout</button>
+      <button id="iff-reset" class="btn btn-outline-secondary btn-sm">Reload</button>
+      <label class="form-check ms-2 mb-0">
+        <input id="iff-snap" class="form-check-input" type="checkbox" checked>
+        <span class="form-check-label">Snap to grid</span>
+      </label>
+      <label class="form-check ms-2 mb-0">
+        <input id="iff-overlap" class="form-check-input" type="checkbox" checked>
+        <span class="form-check-label">Prevent overlap</span>
+      </label>
+      <span id="iff-status" class="small text-muted ms-auto">Ready</span>
+    </div>
+  </div>
+
+  <div class="alert alert-info py-2 mb-3" role="alert">
+    <div class="small mb-1"><strong>How to place bays on the patch enclosure face:</strong></div>
+    <div class="small">Drag a bay tile to position it, drag the bottom-right square to resize, then click <strong>Save Layout</strong>.</div>
+    <div class="small">Use arrow keys for fine movement (hold Shift for larger steps). Use Auto arrange to quickly reset an entire bay set.</div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Module Bays</strong>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="iff-center-module">Center selected</button>
+            <button class="btn btn-outline-secondary btn-sm" id="iff-auto-module">Auto arrange</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <canvas id="iff-module-canvas" width="620" height="420" style="width:100%;max-width:100%;border:1px solid #d0d7de;border-radius:6px;background:#f8fafc;"></canvas>
+          <div class="small mt-2"><strong>Selected:</strong> <span id="iff-module-selected" class="text-muted">None</span></div>
+          <div class="small text-muted mt-2">Drag to move. Drag bottom-right handle to resize.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Device Bays</strong>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="iff-center-device">Center selected</button>
+            <button class="btn btn-outline-secondary btn-sm" id="iff-auto-device">Auto arrange</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <canvas id="iff-device-canvas" width="620" height="420" style="width:100%;max-width:100%;border:1px solid #d0d7de;border-radius:6px;background:#f8fafc;"></canvas>
+          <div class="small mt-2"><strong>Selected:</strong> <span id="iff-device-selected" class="text-muted">None</span></div>
+          <div class="small text-muted mt-2">Same interaction model as module bays.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script type="module" src="{% static 'netbox_innovace_fibre/js/bay_layout_editor.js' %}"></script>
+{% endblock %}

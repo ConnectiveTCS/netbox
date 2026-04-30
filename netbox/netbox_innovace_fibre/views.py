@@ -19,6 +19,24 @@ class Rack3DView(View):
         return render(request, self.template_name)
 
 
+class PatchEnclosureBayLayoutView(View):
+    template_name = 'netbox_innovace_fibre/bay_layout_editor.html'
+
+    def get(self, request, pk):
+        device = get_object_or_404(Device.objects.select_related('role', 'device_type__manufacturer'), pk=pk)
+        role_name = device.role.name if device.role_id else ''
+        role_slug = device.role.slug if device.role_id else ''
+        is_patch_enclosure = role_name.lower() == 'patch enclosure' or role_slug.lower() == 'patch-enclosure'
+        return render(
+            request,
+            self.template_name,
+            {
+                'device': device,
+                'is_patch_enclosure': is_patch_enclosure,
+            },
+        )
+
+
 class TopologyView(View):
     template_name = 'netbox_innovace_fibre/topology.html'
 

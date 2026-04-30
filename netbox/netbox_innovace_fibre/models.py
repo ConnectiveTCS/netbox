@@ -140,6 +140,8 @@ class FloorPlanVersion(models.Model):
       "railFL": 2, "railFR": 2, "railRL": 2, "railRR": 2
     }
     """
+    objects = RestrictedQuerySet.as_manager()
+
     site = models.ForeignKey(
         to=Site,
         on_delete=models.CASCADE,

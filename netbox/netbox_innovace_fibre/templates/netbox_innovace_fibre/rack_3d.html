@@ -654,7 +654,7 @@
     position: absolute;
     top: 10px;
     right: 10px;
-    width: 280px;
+    width: 340px;
     background: var(--r3d-panel);
     border: 1px solid var(--r3d-border);
     border-radius: 8px;
@@ -708,7 +708,7 @@
   }
 
   #r3d-info-body a {
-    color: var(--r3d-accent);
+    {% comment %} color: var(--r3d-accent); {% endcomment %}
     text-decoration: none;
   }
 
@@ -774,6 +774,106 @@
     border-color: #2a3550;
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
   }
+
+  /* ── Device search filter ─────────────────────────────── */
+  #r3d-search {
+    background: var(--r3d-input-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    outline: none;
+    width: 160px;
+  }
+  #r3d-search:focus { border-color: var(--r3d-accent); }
+  #r3d-search::placeholder { color: var(--r3d-text-dim); }
+
+  /* ── Status badge ─────────────────────────────────────── */
+  .r3d-status-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    text-transform: capitalize;
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Info panel action buttons ────────────────────────── */
+  .r3d-info-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    margin-bottom: 6px;
+  }
+
+  .r3d-info-btn {
+    flex: 1;
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    text-decoration: none;
+    background: var(--r3d-btn-bg);
+    color: var(--r3d-text);
+    border: 1px solid var(--r3d-border);
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+  .r3d-info-btn:hover {
+    background: var(--r3d-hover);
+    border-color: var(--r3d-accent);
+    text-decoration: none;
+  }
+  .r3d-info-btn.r3d-info-btn-accent {
+    background: var(--r3d-accent);
+    color: #fff;
+    border-color: var(--r3d-accent);
+  }
+  .r3d-info-btn.r3d-info-btn-accent:hover { opacity: 0.88; }
+
+  /* ── Signal trace section ─────────────────────────────── */
+  .r3d-trace-details {
+    margin-top: 8px;
+    border-top: 1px solid var(--r3d-border);
+    padding-top: 8px;
+  }
+
+  .r3d-trace-summary {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--r3d-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+  }
+  .r3d-trace-summary::-webkit-details-marker { display: none; }
+  .r3d-trace-summary::before { content: '▶\00a0'; font-size: 9px; }
+  details[open] .r3d-trace-summary::before { content: '▼\00a0'; }
+
+  .r3d-trace-body {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--r3d-text-dim);
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  .r3d-trace-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 0;
+    border-bottom: 1px solid var(--r3d-border);
+    line-height: 1.5;
+  }
+  .r3d-trace-port { color: var(--r3d-text); font-family: monospace; }
+  .r3d-trace-arrow { color: var(--r3d-accent); font-size: 12px; padding: 0 2px; }
 </style>
 {% endblock head %}
 
@@ -798,6 +898,8 @@
         <button class="r3d-face-btn" data-face="rear">Rear</button>
         <button class="r3d-face-btn" data-face="both">Both</button>
       </div>
+      <input id="r3d-search" type="search" placeholder="Filter devices…"
+        title="Filter devices by name, role, or type">
     </div>
 
     <div id="r3d-controls">
@@ -894,6 +996,14 @@
           <div class="r3d-radio-group">
             <label><input type="radio" name="empty" value="yes" checked> Show</label>
             <label><input type="radio" name="empty" value="no"> Hide</label>
+          </div>
+        </div>
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Rack U ruler</span>
+          <div class="r3d-radio-group">
+            <label><input type="radio" name="ruler" value="yes" checked> Show</label>
+            <label><input type="radio" name="ruler" value="no"> Hide</label>
           </div>
         </div>
 

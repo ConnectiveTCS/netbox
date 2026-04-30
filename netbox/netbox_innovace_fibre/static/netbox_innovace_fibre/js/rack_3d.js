@@ -33,20 +33,20 @@ function themeColors(theme) {
         sceneBg: 0xf2f4f8,  // near-white background
         floor: 0xc2c8d4,  // tile surface
         floorLine: 0x909aaa,  // grout lines
-        post: 0x18191e,  // near-black frame posts
-        // blank: 0xdde2ea,  // blank panel fill
-        side: 0x18191e,  // hidden behind cabinet body
+        post: 0x1c1c24,  // near-black steel frame
+        blank: 0x282832,  // blank panel fill
+        rail: 0x8a9aaa,  // silver/aluminium mounting rails
         deviceDark: 0x0e1014,  // equipment face (very dark)
-        rackBody: 0x5ab84c,  // green cabinet body
+        rackBody: 0x1a1a1e,  // matte black cabinet body
     } : {
         sceneBg: 0x0A0C10,
         floor: 0x0c0f14,
         floorLine: 0x131820,
-        post: 0x2a2e3a,
-        // blank:      0x1e2330,
-        side: 0x3a4a5a,
+        post: 0x1e1e28,  // near-black steel frame
+        blank: 0x1a1a22,  // blank panel fill
+        rail: 0x5a6878,  // silver/aluminium mounting rails
         deviceDark: 0x1a1e26,
-        rackBody: 0x2d5a28,  // dark green cabinet body
+        rackBody: 0x111118,  // matte black cabinet body
     };
 }
 
@@ -70,6 +70,12 @@ class RackScene {
         this._textures = [];
         this._animId = null;
         this._settings = { theme: 'light', labels: 'auto' };
+        this._deviceMeshes = [];     // only device meshes — for hover/selection/filter
+        this._rackFrameMeshes = [];   // rack shell/frame meshes — for hover transparency
+        this._hoveredMesh = null;
+        this._selectedMesh = null;
+        this._hoveredRackId = null;   // rackId of the rack currently under the cursor
+        this._cameraAnim = null;   // { fromPos, toPos, fromTarget, toTarget, t }
 
         this._renderer = new THREE.WebGLRenderer({ antialias: true });
         this._renderer.setPixelRatio(window.devicePixelRatio);
@@ -172,6 +178,7 @@ class RackScene {
             if (!rd) continue;
 
             const group = new THREE.Group();
+            group.userData.rackId = p.rackId;   // used by hover-transparency system
             group.position.set(p.x - cx, 0, p.z - cz);
             group.rotation.y = orientToRad(p.orientation || 'N');
             this._scene.add(group);
@@ -249,6 +256,200 @@ class RackScene {
         this._renderer.dispose();
     }
 
+    // ── Public: hover / selection / filter ───────────────────────────────────
+
+    hoverDevice(event) {
+        const rect = this._container.getBoundingClientRect();
+        this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this._raycaster.setFromCamera(this._mouse, this._camera);
+        const allHits = this._raycaster.intersectObjects(this._scene.children, true);
+        const hits = allHits.filter(h => h.object.userData.deviceId);
+        const newMesh = hits.length ? hits[0].object : null;
+
+        // Rack hover: make the shell transparent so devices inside are visible.
+        // Use the topmost hit that is either a device or a frame part.
+        const rackHit = allHits.find(h => h.object.userData.deviceId || h.object.userData.isRackFrame);
+        const newRackId = rackHit ? this._getRackIdFromHit(rackHit.object) : null;
+        if (newRackId !== this._hoveredRackId) {
+            if (this._hoveredRackId !== null) this._setRackFrameTransparency(this._hoveredRackId, false);
+            if (newRackId !== null) this._setRackFrameTransparency(newRackId, true);
+            this._hoveredRackId = newRackId;
+        }
+
+        if (newMesh === this._hoveredMesh) return;
+
+        // Restore previous hover emissive + label (unless it's the selected device)
+        if (this._hoveredMesh && this._hoveredMesh !== this._selectedMesh) {
+            this._setEmissive(this._hoveredMesh, 0x000000, 0);
+            if (this._settings?.labels === 'auto' && this._hoveredMesh.userData.label) {
+                this._hoveredMesh.userData.label.visible = false;
+            }
+        }
+
+        if (newMesh) {
+            if (newMesh !== this._selectedMesh) {
+                this._setEmissive(newMesh, 0x001a33, 0.50);
+            }
+            if (this._settings?.labels === 'auto' && newMesh.userData.label) {
+                newMesh.userData.label.visible = true;
+            }
+            this._container.style.cursor = 'pointer';
+        } else {
+            this._container.style.cursor = '';
+        }
+        this._hoveredMesh = newMesh;
+    }
+
+    selectDevice(event) {
+        const rect = this._container.getBoundingClientRect();
+        this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this._raycaster.setFromCamera(this._mouse, this._camera);
+        const hits = this._raycaster.intersectObjects(this._scene.children, true)
+            .filter(h => h.object.userData.deviceId);
+        const mesh = hits.length ? hits[0].object : null;
+
+        if (!mesh) { this.clearSelection(); return null; }
+
+        // Toggle: clicking the already-selected device deselects
+        if (mesh === this._selectedMesh) { this.clearSelection(); return null; }
+
+        if (this._selectedMesh) {
+            this._setEmissive(this._selectedMesh, 0x000000, 0);
+            if (this._settings?.labels !== 'on' && this._selectedMesh.userData.label) {
+                this._selectedMesh.userData.label.visible = false;
+            }
+        }
+        this._selectedMesh = mesh;
+        this._setEmissive(mesh, 0x002244, 0.70);
+        this._setIsolation(mesh);
+        this._zoomToDevice(mesh);
+        if (this._settings?.labels !== 'off' && mesh.userData.label) {
+            mesh.userData.label.visible = true;
+        }
+        return mesh.userData.deviceData;
+    }
+
+    clearSelection() {
+        if (this._selectedMesh) {
+            this._setEmissive(this._selectedMesh, 0x000000, 0);
+            if (this._settings?.labels !== 'on' && this._selectedMesh.userData.label) {
+                this._selectedMesh.userData.label.visible = false;
+            }
+        }
+        this._selectedMesh = null;
+        this._resetAllDeviceVisuals();
+    }
+
+    filterDevices(query) {
+        const q = (query || '').toLowerCase().trim();
+        for (const mesh of this._deviceMeshes) {
+            const dev = mesh.userData.deviceData;
+            const match = !q
+                || (dev.name || '').toLowerCase().includes(q)
+                || (dev.role || '').toLowerCase().includes(q)
+                || (dev.device_type || '').toLowerCase().includes(q)
+                || (dev.manufacturer || '').toLowerCase().includes(q);
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach(m => {
+                if (!m) return;
+                m.transparent = !match;
+                m.opacity = match ? 1 : 0.12;
+            });
+        }
+    }
+
+    // ── Private: visual helpers ───────────────────────────────────────────────
+
+    _setEmissive(mesh, hexColor, intensity) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach(m => {
+            if (m?.isMeshStandardMaterial) {
+                m.emissive = new THREE.Color(hexColor);
+                m.emissiveIntensity = intensity;
+            }
+        });
+    }
+
+    _setIsolation(activeMesh) {
+        for (const mesh of this._deviceMeshes) {
+            if (mesh === activeMesh) continue;
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach(m => {
+                if (!m) return;
+                m.transparent = true;
+                m.opacity = 0.18;
+            });
+        }
+    }
+
+    _resetAllDeviceVisuals() {
+        for (const mesh of this._deviceMeshes) {
+            this._setEmissive(mesh, 0x000000, 0);
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach(m => {
+                if (!m) return;
+                m.transparent = false;
+                m.opacity = 1;
+            });
+        }
+    }
+
+    // Returns the rackId associated with a hit mesh, either from the mesh itself
+    // (frame meshes) or from a parent Group (device meshes in layout mode).
+    _getRackIdFromHit(object) {
+        if (object.userData.rackId) return object.userData.rackId;
+        let obj = object.parent;
+        while (obj) {
+            if (obj.userData.rackId) return obj.userData.rackId;
+            obj = obj.parent;
+        }
+        return null;
+    }
+
+    // Fades or restores the rack frame/shell meshes for a given rack.
+    _setRackFrameTransparency(rackId, transparent) {
+        for (const mesh of this._rackFrameMeshes) {
+            if (mesh.userData.rackId !== rackId) continue;
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach(m => {
+                if (!m) return;
+                // Skip the permanently-invisible front-face slot (flagged at build time)
+                if (m.userData?.rackInvisible) return;
+                m.transparent = transparent;
+                m.opacity = transparent ? 0.15 : 1.0;
+            });
+        }
+    }
+
+    _zoomToDevice(mesh) {
+        const box = new THREE.Box3().setFromObject(mesh);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const radius = Math.max(size.x, size.y, size.z) * 1.6;
+        const dir = this._camera.position.clone().sub(this._controls.target).normalize();
+        const toPos = center.clone().add(dir.multiplyScalar(Math.max(radius, 10)));
+        this._cameraAnim = {
+            fromPos: this._camera.position.clone(),
+            toPos,
+            fromTarget: this._controls.target.clone(),
+            toTarget: center.clone(),
+            t: 0,
+        };
+    }
+
+    _stepCameraAnim() {
+        const a = this._cameraAnim;
+        a.t += 0.055;   // ~18 frames to reach target
+        const done = a.t >= 1;
+        const s = done ? 1 : 1 - Math.pow(1 - a.t, 3);   // ease-out cubic
+        this._camera.position.lerpVectors(a.fromPos, a.toPos, s);
+        this._controls.target.lerpVectors(a.fromTarget, a.toTarget, s);
+        this._controls.update();
+        if (done) this._cameraAnim = null;
+    }
+
     // ── Private: scene building ───────────────────────────────────────────────
 
     _buildFloor(w, d, settings) {
@@ -301,59 +502,225 @@ class RackScene {
         const totalH = rack.u_height * U_SCALE_BASE * sc;
         const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
         const colors = themeColors(settings.theme);
-        const mat = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.75, roughness: 0.35 });
+        const outerW = RACK_WIDTH + POST_W * 2;   // 20" — full cabinet width incl. side panels
 
-        // ── Solid cabinet body ───────────────────────────────────────────────
-        // Rendered first (behind posts) so the dark post corners frame it.
-        // Six-face material array: [+X, -X, +Y, -Y, +Z(front), -Z(back)]
-        const bodyMat = new THREE.MeshStandardMaterial({ color: colors.rackBody, metalness: 0.12, roughness: 0.65 });
-        const topMat = new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.65, roughness: 0.40 });
-        const invisMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0 });
-        const cabinetMats = [bodyMat, bodyMat, topMat, bodyMat, invisMat, invisMat];
-        const cabinetGeo = new THREE.BoxGeometry(RACK_WIDTH, totalH, depth);
-        const cabinet = new THREE.Mesh(cabinetGeo, cabinetMats);
-        cabinet.position.set(offset.x, offset.y + totalH / 2, offset.z);
-        target.add(cabinet);
-        if (!parent) this._meshes.push(cabinet);
+        // ── Materials ────────────────────────────────────────────────────────
+        const shellMat = new THREE.MeshStandardMaterial({ color: colors.rackBody, metalness: 0.22, roughness: 0.72 });
+        const steelMat = new THREE.MeshStandardMaterial({ color: colors.rail,     metalness: 0.82, roughness: 0.28 });
+        const bezMat   = new THREE.MeshStandardMaterial({ color: colors.post,     metalness: 0.55, roughness: 0.48 });
+        const invisMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.0 });
+        invisMat.userData = { rackInvisible: true };   // sentinel: never affected by hover-transparency
 
-        const hw = RACK_WIDTH / 2 + POST_W / 2;
+        // ── Outer shell: solid sides/top/bottom/rear, open front ─────────────
+        // Face order: [+X(right), -X(left), +Y(top), -Y(bottom), +Z(front), -Z(rear)]
+        const shellMats = [shellMat, shellMat, shellMat, shellMat, invisMat, shellMat];
+        // Helper: tags a mesh as a rack frame component for hover-transparency
+        const _regFrame = (m) => {
+            m.userData.rackId = rack.id;
+            m.userData.isRackFrame = true;
+            this._rackFrameMeshes.push(m);
+            return m;
+        };
 
-        // Posts sit flush inside the cabinet body (no protrusion beyond depth)
-        const corners = [
-            { sx: -1, zSign: -1 },
-            { sx: 1, zSign: -1 },
-            { sx: -1, zSign: 1 },
-            { sx: 1, zSign: 1 },
+        const shellGeo = new THREE.BoxGeometry(outerW, totalH, depth);
+        const shell = new THREE.Mesh(shellGeo, shellMats);
+        shell.position.set(offset.x, offset.y + totalH / 2, offset.z);
+        target.add(_regFrame(shell));
+        if (!parent) this._meshes.push(shell);
+
+        // ── Internal mounting rails (4 vertical silver steel posts) ──────────
+        const railX   = RACK_WIDTH / 2 - POST_W / 2;
+        const frontZ  = offset.z + depth / 2;
+        const rearZ   = offset.z - depth / 2;
+        const rInset  = 0.22;   // gap from inner shell face
+        const rPositions = [
+            { x:  railX, z: frontZ - POST_W * 0.5 - rInset },
+            { x: -railX, z: frontZ - POST_W * 0.5 - rInset },
+            { x:  railX, z: rearZ  + POST_W * 0.5 + rInset },
+            { x: -railX, z: rearZ  + POST_W * 0.5 + rInset },
         ];
-        for (const { sx, zSign } of corners) {
-            const postGeo = new THREE.BoxGeometry(POST_W, totalH, POST_W);
-            const zPos = zSign * (depth / 2 - POST_W / 2);
-            const m = new THREE.Mesh(postGeo, mat);
-            m.position.set(offset.x + sx * hw, offset.y + totalH / 2, offset.z + zPos);
-            target.add(m);
+        const vRailGeo = new THREE.BoxGeometry(POST_W, totalH - RAIL_H * 2, POST_W);
+        for (const { x, z } of rPositions) {
+            const m = new THREE.Mesh(vRailGeo, steelMat);
+            m.position.set(offset.x + x, offset.y + totalH / 2, z);
+            target.add(_regFrame(m));
             if (!parent) this._meshes.push(m);
         }
 
-        // Top and bottom rails span only the cabinet depth (no overhang)
-        const railGeo = new THREE.BoxGeometry(RACK_WIDTH + POST_W * 2 + 0.1, RAIL_H, depth);
-        for (const y of [0, totalH]) {
-            const m = new THREE.Mesh(railGeo, mat);
+        // ── Top and bottom cross-members ──────────────────────────────────────
+        const crossGeo = new THREE.BoxGeometry(outerW, RAIL_H, depth * 0.92);
+        for (const y of [RAIL_H / 2, totalH - RAIL_H / 2]) {
+            const m = new THREE.Mesh(crossGeo, bezMat);
             m.position.set(offset.x, offset.y + y, offset.z);
-            target.add(m);
+            target.add(_regFrame(m));
             if (!parent) this._meshes.push(m);
         }
 
-        const sideMat = new THREE.MeshStandardMaterial({
-            color: colors.side, transparent: true, opacity: 0.06, side: THREE.DoubleSide,
-        });
-        const sideGeo = new THREE.PlaneGeometry(depth, totalH);
-        for (const sx of [-1, 1]) {
-            const m = new THREE.Mesh(sideGeo, sideMat);
-            m.rotation.y = Math.PI / 2;
-            m.position.set(offset.x + sx * (RACK_WIDTH / 2 + POST_W), offset.y + totalH / 2, offset.z);
-            target.add(m);
-            if (!parent) this._meshes.push(m);
+        // ── Front door bezel: 4 bars framing the door opening ────────────────
+        const bezD  = 0.32;   // protrusion depth
+        const bezFZ = frontZ + bezD / 2;
+        const bezH  = 0.60;   // top/bottom bar height
+        const bezSW = POST_W + 0.12;   // side strip width
+
+        const mBTop = new THREE.Mesh(new THREE.BoxGeometry(outerW, bezH, bezD), bezMat);
+        mBTop.position.set(offset.x, offset.y + totalH - bezH / 2, bezFZ);
+        target.add(_regFrame(mBTop)); if (!parent) this._meshes.push(mBTop);
+
+        const mBBot = new THREE.Mesh(new THREE.BoxGeometry(outerW, bezH, bezD), bezMat);
+        mBBot.position.set(offset.x, offset.y + bezH / 2, bezFZ);
+        target.add(_regFrame(mBBot)); if (!parent) this._meshes.push(mBBot);
+
+        const mBLeft = new THREE.Mesh(new THREE.BoxGeometry(bezSW, totalH, bezD), bezMat);
+        mBLeft.position.set(offset.x - (outerW / 2 - bezSW / 2), offset.y + totalH / 2, bezFZ);
+        target.add(_regFrame(mBLeft)); if (!parent) this._meshes.push(mBLeft);
+
+        const mBRight = new THREE.Mesh(new THREE.BoxGeometry(bezSW, totalH, bezD), bezMat);
+        mBRight.position.set(offset.x + (outerW / 2 - bezSW / 2), offset.y + totalH / 2, bezFZ);
+        target.add(_regFrame(mBRight)); if (!parent) this._meshes.push(mBRight);
+
+        // ── Perforated front door ─────────────────────────────────────────────
+        const doorW = outerW - bezSW * 2 + 0.05;
+        const doorH = totalH - bezH * 2 + 0.05;
+        const isRealistic = (settings.depth || 'realistic') === 'realistic';
+        const doorMat = isRealistic
+            ? this._makePerforatedDoorMat(doorH, doorW, settings)
+            : new THREE.MeshStandardMaterial({ color: colors.post, metalness: 0.35, roughness: 0.65 });
+        const doorGeo = new THREE.PlaneGeometry(doorW, doorH);
+        const door = new THREE.Mesh(doorGeo, doorMat);
+        door.position.set(offset.x, offset.y + totalH / 2, frontZ + 0.08);
+        target.add(_regFrame(door));
+        if (!parent) this._meshes.push(door);
+
+        // ── Door handle: left side ────────────────────────────────────────────
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xb0bac4, metalness: 0.88, roughness: 0.20 });
+        const handleX   = offset.x - (outerW / 2 - bezSW - 0.62);
+        const handleH2  = Math.min(totalH * 0.14, 5.0);
+        const handleFZ  = frontZ + 0.55;
+
+        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.26, handleH2, 0.26), handleMat);
+        grip.position.set(handleX, offset.y + totalH / 2, handleFZ);
+        target.add(_regFrame(grip)); if (!parent) this._meshes.push(grip);
+
+        for (const dy of [-1, 1]) {
+            const brkt = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.20, 0.48), handleMat);
+            brkt.position.set(handleX, offset.y + totalH / 2 + dy * (handleH2 / 2), handleFZ - 0.16);
+            target.add(_regFrame(brkt)); if (!parent) this._meshes.push(brkt);
         }
+
+        // ── U-number ruler strip ──────────────────────────────────────────────
+        if (settings.showRuler !== false) {
+            this._buildUnitRuler(rack, settings, offset, parent, totalH, depth);
+        }
+    }
+
+    _buildUnitRuler(rack, settings, offset, parent, totalH, depth) {
+        const target = parent || this._scene;
+        const isLight = settings.theme === 'light';
+        const uCount = rack.u_height;
+        if (!uCount) return;
+
+        const rulerW = 2.2;
+        const uPx = 24;
+        const rulerPxW = 96;
+        const rulerPxH = Math.max(uCount * uPx, 4);
+
+        const c = document.createElement('canvas');
+        c.width = rulerPxW; c.height = rulerPxH;
+        const ctx = c.getContext('2d');
+
+        ctx.fillStyle = isLight ? '#c8d2e4' : '#111620';
+        ctx.fillRect(0, 0, rulerPxW, rulerPxH);
+
+        ctx.strokeStyle = isLight ? '#8899bb' : '#2a3850';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = isLight ? '#304263' : '#9aa8c2';
+        const fontSize = Math.max(8, Math.min(14, uPx * 0.58));
+        ctx.font = `600 ${fontSize}px "Segoe UI", "Roboto Mono", monospace`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        const textPad = 14;
+
+        for (let i = 0; i < uCount; i++) {
+            // canvas y=0 is world top (tex.flipY=false).
+            // desc_units=false: world top = high unit → uNum = starting_unit + uCount-1-i
+            // desc_units=true:  world top = low unit  → uNum = starting_unit + i
+            const uNum = rack.desc_units
+                ? rack.starting_unit + i
+                : rack.starting_unit + (uCount - 1 - i);
+            const y = i * uPx;
+            // subtle alternating band to improve readability at high U counts
+            if (i % 2 === 0) {
+                ctx.fillStyle = isLight ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.03)';
+                ctx.fillRect(0, y, rulerPxW, uPx);
+                ctx.fillStyle = isLight ? '#304263' : '#9aa8c2';
+            }
+            // separator line
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(rulerPxW, y); ctx.stroke();
+            // tick mark
+            ctx.beginPath(); ctx.moveTo(rulerPxW - 12, y + uPx / 2);
+            ctx.lineTo(rulerPxW - 3, y + uPx / 2); ctx.stroke();
+            // U number (skip every other if tightly packed)
+            if (uPx >= 14 || i % 2 === 0) {
+                ctx.fillText(`${uNum}`, rulerPxW - textPad, y + uPx / 2);
+            }
+        }
+
+        // bottom border line
+        ctx.beginPath();
+        ctx.moveTo(0, rulerPxH - 1);
+        ctx.lineTo(rulerPxW, rulerPxH - 1);
+        ctx.stroke();
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.flipY = false;   // canvas top → world top
+        tex.colorSpace = THREE.SRGBColorSpace;
+        this._textures.push(tex);
+
+        const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.FrontSide });
+        const geo = new THREE.PlaneGeometry(rulerW, totalH);
+        const ruler = new THREE.Mesh(geo, mat);
+        // Place flush with the front face, to the left of the posts, facing the viewer (+Z)
+        ruler.position.set(
+            offset.x - RACK_WIDTH / 2 - POST_W - rulerW / 2 - 0.05,
+            offset.y + totalH / 2,
+            offset.z + depth / 2 - 0.05
+        );
+        target.add(ruler);
+        ruler.userData.rackId = rack.id;
+        ruler.userData.isRackFrame = true;
+        this._rackFrameMeshes.push(ruler);
+        if (!parent) this._meshes.push(ruler);
+    }
+
+    _makePerforatedDoorMat(doorH, doorW, settings) {
+        const isLight = settings.theme === 'light';
+        // Canvas tile: white = opaque metal, black circle = punched hole (transparent via alphaMap)
+        const tilePx = 16;
+        const holeR  = 5;   // ~38% open area — realistic punch-plate density
+        const c = document.createElement('canvas');
+        c.width = tilePx; c.height = tilePx;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';   // white = fully opaque in alphaMap red channel
+        ctx.fillRect(0, 0, tilePx, tilePx);
+        ctx.fillStyle = '#000000';   // black = transparent
+        ctx.beginPath();
+        ctx.arc(tilePx / 2, tilePx / 2, holeR, 0, Math.PI * 2);
+        ctx.fill();
+
+        const alphaTex = new THREE.CanvasTexture(c);
+        alphaTex.wrapS = THREE.RepeatWrapping;
+        alphaTex.wrapT = THREE.RepeatWrapping;
+        alphaTex.repeat.set(doorW * 3.5, doorH * 3.5);   // ~3.5 holes per inch
+        this._textures.push(alphaTex);
+
+        return new THREE.MeshStandardMaterial({
+            color: isLight ? 0x242430 : 0x0e0e16,
+            metalness: 0.62,
+            roughness: 0.45,
+            alphaMap: alphaTex,
+            alphaTest: 0.45,   // hard-edge cutout — avoids depth-sort issues
+            side: THREE.DoubleSide,   // visible from inside when orbiting
+        });
     }
 
     _buildDevices(devices, rack, settings, offset, parent) {
@@ -399,17 +766,153 @@ class RackScene {
             mesh.userData = { deviceId: dev.id, deviceData: dev };
             target.add(mesh);
             if (!parent) this._meshes.push(mesh);
+            this._deviceMeshes.push(mesh);   // always tracked (both single and layout mode)
+
+            // Thin edge accent on the device box
+            const devEdgeMat = new THREE.LineBasicMaterial({
+                color: settings.theme === 'light' ? 0x5577aa : 0x2a4060,
+                transparent: true, opacity: 0.55,
+            });
+            const devEdgeGeo = new THREE.EdgesGeometry(geo);
+            const devEdges = new THREE.LineSegments(devEdgeGeo, devEdgeMat);
+            devEdges.raycast = () => {};   // don't intercept mouse picks
+            mesh.add(devEdges);
 
             const div = document.createElement('div');
             div.className = 'r3d-device-label';
             div.textContent = dev.name;
             const label = new CSS2DObject(div);
             label.position.set(0, 0, deviceDepth / 2 + 0.1);
+            label.visible = false;   // hidden by default; auto=hover reveals, on=always shown
             mesh.add(label);
+            mesh.userData.label = label;   // back-ref so hoverDevice() can toggle it
             this._labels.push(label);
+
+            this._buildPatchEnclosureModules(mesh, dev, deviceH, deviceDepth, settings, loader);
         }
 
         this._applyLabelMode(settings.labels);
+    }
+
+    _buildPatchEnclosureModules(mesh, dev, deviceH, deviceDepth, settings, loader) {
+        const moduleBays = Array.isArray(dev.module_bays) ? dev.module_bays : [];
+        const deviceBays = Array.isArray(dev.device_bays) ? dev.device_bays : [];
+        if (!dev.patch_enclosure || (!moduleBays.length && !deviceBays.length)) return;
+
+        const deviceHasContent = deviceBays.some(b => !!b.device_image || !!b.occupied);
+
+        // Prefer device bays when they are populated (e.g. installed splitter devices in S1..S8).
+        const baysToRender = deviceHasContent ? deviceBays : moduleBays;
+        if (!baysToRender.length) return;
+
+        const mountSide = dev.face === 'rear' ? 'rear' : 'front';
+        const isRearOnly = settings.face === 'rear';
+        const isFrontOnly = settings.face === 'front';
+        if (!dev.is_full_depth && ((isRearOnly && mountSide === 'front') || (isFrontOnly && mountSide === 'rear'))) {
+            return;
+        }
+
+        const usableW = (RACK_WIDTH - POST_W * 2) * 0.92;
+        const usableH = deviceH * 0.86;
+
+        const highestSlot = Math.max(...baysToRender.map(b => parseInt(b.face_slot, 10) || 0), 0);
+        const count = Math.max(baysToRender.length, highestSlot);
+        const cols = Math.max(1, Math.ceil(Math.sqrt(count * 2.0)));
+        const rows = Math.max(1, Math.ceil(count / cols));
+
+        const cellW = usableW / cols;
+        const cellH = usableH / rows;
+        const tileW = cellW * 0.84;
+        const tileH = cellH * 0.78;
+        const z = mountSide === 'front' ? (deviceDepth / 2 + 0.012) : (-deviceDepth / 2 - 0.012);
+        const yTop = usableH / 2 - cellH / 2;
+        const xLeft = -usableW / 2 + cellW / 2;
+
+        for (const bay of baysToRender) {
+            const layout = bay.layout && typeof bay.layout === 'object' ? bay.layout : null;
+
+            let x;
+            let y;
+            let finalW = tileW;
+            let finalH = tileH;
+
+            if (layout && Number.isFinite(+layout.x) && Number.isFinite(+layout.y)
+                && Number.isFinite(+layout.w) && Number.isFinite(+layout.h)
+                && +layout.w > 0 && +layout.h > 0) {
+                const lx = Math.max(0, Math.min(100, +layout.x));
+                const ly = Math.max(0, Math.min(100, +layout.y));
+                const lw = Math.max(0.5, Math.min(100, +layout.w));
+                const lh = Math.max(0.5, Math.min(100, +layout.h));
+
+                finalW = usableW * (lw / 100);
+                finalH = usableH * (lh / 100);
+                x = -usableW / 2 + usableW * ((lx + lw / 2) / 100);
+                y = usableH / 2 - usableH * ((ly + lh / 2) / 100);
+            } else {
+                const slot = Math.max((parseInt(bay.face_slot, 10) || 1) - 1, 0);
+                const row = Math.floor(slot / cols);
+                const col = slot % cols;
+                x = xLeft + col * cellW;
+                y = yTop - row * cellH;
+            }
+
+            let tileMat;
+            const tileImage = bay.module_image || bay.device_image;
+            if (tileImage) {
+                const tex = loader.load(tileImage);
+                tex.colorSpace = THREE.SRGBColorSpace;
+                this._textures.push(tex);
+                tileMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+            } else {
+                tileMat = new THREE.MeshStandardMaterial({
+                    color: hashColor(
+                        bay.installed_device_type
+                        || bay.module_type
+                        || bay.installed_device_name
+                        || bay.module_name
+                        || bay.name
+                        || String(bay.id)
+                    ),
+                    metalness: 0.25,
+                    roughness: 0.65,
+                });
+            }
+
+            const tile = new THREE.Mesh(new THREE.PlaneGeometry(finalW, finalH), tileMat);
+            tile.position.set(x, y, z);
+            if (mountSide === 'rear') tile.rotation.y = Math.PI;
+
+            // Occupied device bays should behave like selectable devices in the 3D scene.
+            if (bay.installed_device_id) {
+                tile.userData = {
+                    deviceId: bay.installed_device_id,
+                    deviceData: {
+                        id: bay.installed_device_id,
+                        name: bay.installed_device_name || `${dev.name} ${bay.name}`,
+                        device_type: bay.installed_device_type || '',
+                        manufacturer: bay.installed_device_manufacturer || '',
+                        role: bay.installed_device_role || '',
+                        status: bay.installed_device_status || '',
+                        asset_tag: bay.installed_device_asset_tag || '',
+                        serial: bay.installed_device_serial || '',
+                        url: bay.installed_device_url || '',
+                        position: null,
+                        face: bay.installed_device_face || '',
+                        u_height: bay.installed_device_u_height ?? null,
+                        is_full_depth: !!bay.installed_device_is_full_depth,
+                        front_image: bay.device_image || null,
+                        rear_image: null,
+                        bay_name: bay.name,
+                        parent_device_name: dev.name || '',
+                    },
+                };
+                this._deviceMeshes.push(tile);
+            } else {
+                tile.raycast = () => {};
+            }
+
+            mesh.add(tile);
+        }
     }
 
     _faceMat(dev, side, loader, settings, colors) {
@@ -502,12 +1005,18 @@ class RackScene {
         this._meshes = [];
         this._labels = [];
         this._textures = [];
+        this._deviceMeshes = [];
+        this._rackFrameMeshes = [];
+        this._hoveredMesh = null;
+        this._selectedMesh = null;
+        this._hoveredRackId = null;
+        this._cameraAnim = null;
     }
 
     _applyLabelMode(mode) {
         if (mode === 'on') { this._labels.forEach(l => { l.visible = true; }); return; }
-        if (mode === 'off') { this._labels.forEach(l => { l.visible = false; }); return; }
-        this._updateLabelVisibility();
+        // 'auto' and 'off': hide all; 'auto' reveals the hovered device via hoverDevice()
+        this._labels.forEach(l => { l.visible = false; });
     }
 
     _updateLabelVisibility() {
@@ -519,7 +1028,7 @@ class RackScene {
     _animate() {
         this._animId = requestAnimationFrame(() => this._animate());
         this._controls.update();
-        if (this._settings?.labels === 'auto') this._updateLabelVisibility();
+        if (this._cameraAnim) this._stepCameraAnim();
         this._renderer.render(this._scene, this._camera);
         this._css2d.render(this._scene, this._camera);
     }
@@ -922,6 +1431,7 @@ class AppController {
             if (s.labels) document.querySelector(`input[name="labels"][value="${s.labels}"]`)?.click();
             if (s.colorby) document.querySelector(`input[name="colorby"][value="${s.colorby}"]`)?.click();
             if (s.empty) document.querySelector(`input[name="empty"][value="${s.empty}"]`)?.click();
+            if (s.ruler) document.querySelector(`input[name="ruler"][value="${s.ruler}"]`)?.click();
             if (s.railFL) document.getElementById('cfg-rail-fl').value = s.railFL;
             if (s.railFR) document.getElementById('cfg-rail-fr').value = s.railFR;
             if (s.railRL) document.getElementById('cfg-rail-rl').value = s.railRL;
@@ -935,6 +1445,7 @@ class AppController {
         localStorage.setItem(LS_SETTINGS, JSON.stringify({
             theme: s.theme, scale: s.scale, depth: s.depth,
             labels: s.labels, colorby: s.colorBy, empty: s.showEmpty ? 'yes' : 'no',
+            ruler: s.showRuler ? 'yes' : 'no',
             railFL: s.railFL, railFR: s.railFR, railRL: s.railRL, railRR: s.railRR,
         }));
     }
@@ -1043,12 +1554,23 @@ class AppController {
             document.getElementById('r3d-ctx-menu').classList.add('r3d-ctx-hidden');
         });
 
+        // Device hover glow
+        this._viewport.addEventListener('mousemove', e => this._scene.hoverDevice(e));
+
         // Device picking in 3D viewport
-        document.getElementById('btn-info-close').addEventListener('click', () => this._hideInfo());
+        document.getElementById('btn-info-close').addEventListener('click', () => {
+            this._scene.clearSelection();
+            this._hideInfo();
+        });
         this._viewport.addEventListener('click', e => {
-            const dev = this._scene.pickDevice(e);
+            const dev = this._scene.selectDevice(e);
             if (dev) this._showInfo(dev);
             else this._hideInfo();
+        });
+
+        // Device filter search
+        document.getElementById('r3d-search')?.addEventListener('input', e => {
+            this._scene.filterDevices(e.target.value);
         });
     }
 
@@ -1388,6 +1910,7 @@ class AppController {
             labels: document.querySelector('input[name="labels"]:checked')?.value || 'auto',
             colorBy: document.querySelector('input[name="colorby"]:checked')?.value || 'image',
             showEmpty: document.querySelector('input[name="empty"]:checked')?.value === 'yes',
+            showRuler: document.querySelector('input[name="ruler"]:checked')?.value !== 'no',
             face: document.querySelector('.r3d-face-btn.active')?.dataset.face || 'both',
             railFL: parseFloat(document.getElementById('cfg-rail-fl')?.value) || 2,
             railFR: parseFloat(document.getElementById('cfg-rail-fr')?.value) || 2,
@@ -1400,17 +1923,64 @@ class AppController {
 
     _showInfo(dev) {
         this._infoTitle.textContent = dev.name;
+        const statusColors = {
+            active: '#22c55e', planned: '#3b82f6', staged: '#8b5cf6',
+            failed: '#ef4444', decommissioning: '#f97316', inventory: '#6b7280', offline: '#9ca3af',
+        };
+        const statusColor = statusColors[dev.status] || '#6b7280';
+        const statusBadge = dev.status
+            ? `<span class="r3d-status-badge" style="background:${statusColor}">${dev.status}</span>`
+            : '—';
+        const positionText = (dev.position !== null && dev.position !== undefined)
+            ? `U${dev.position}`
+            : (dev.bay_name ? `Bay ${dev.bay_name}${dev.parent_device_name ? ` (${dev.parent_device_name})` : ''}` : '—');
+        const uHeightText = (dev.u_height !== null && dev.u_height !== undefined) ? `${dev.u_height}U` : '—';
+        const faceText = dev.face || '—';
+        const url = dev.url || '#';
+        const signalTraceUrl = dev.id ? `/plugins/innovace-fibre/devices/${dev.id}/signal-trace/` : '#';
+        const bayLayoutUrl = dev.id ? `/plugins/innovace-fibre/devices/${dev.id}/bay-layout/` : '#';
+
         this._infoBody.innerHTML = `
-            <div class="r3d-info-row"><span class="r3d-info-lbl">Device</span><span class="r3d-info-val"><a href="${dev.url}" target="_blank">${dev.name}</a></span></div>
-            <div class="r3d-info-row"><span class="r3d-info-lbl">Type</span><span class="r3d-info-val">${dev.device_type}</span></div>
+            <div class="r3d-info-row"><span class="r3d-info-lbl">Status</span><span class="r3d-info-val">${statusBadge}</span></div>
+            <div class="r3d-info-row"><span class="r3d-info-lbl">Type</span><span class="r3d-info-val">${dev.device_type || '—'}</span></div>
             <div class="r3d-info-row"><span class="r3d-info-lbl">Maker</span><span class="r3d-info-val">${dev.manufacturer || '—'}</span></div>
             <div class="r3d-info-row"><span class="r3d-info-lbl">Role</span><span class="r3d-info-val">${dev.role || '—'}</span></div>
-            <div class="r3d-info-row"><span class="r3d-info-lbl">Position</span><span class="r3d-info-val">U${dev.position}</span></div>
-            <div class="r3d-info-row"><span class="r3d-info-lbl">Face</span><span class="r3d-info-val">${dev.face}</span></div>
-            <div class="r3d-info-row"><span class="r3d-info-lbl">Height</span><span class="r3d-info-val">${dev.u_height}U</span></div>
-            <div class="r3d-info-row"><span class="r3d-info-lbl">Full depth</span><span class="r3d-info-val">${dev.is_full_depth ? 'Yes' : 'No'}</span></div>
+            <div class="r3d-info-row"><span class="r3d-info-lbl">Position</span><span class="r3d-info-val">${positionText}</span></div>
+            <div class="r3d-info-row"><span class="r3d-info-lbl">Face</span><span class="r3d-info-val">${faceText} / ${uHeightText}${dev.is_full_depth ? ' / full-depth' : ''}</span></div>
+            ${dev.asset_tag ? `<div class="r3d-info-row"><span class="r3d-info-lbl">Asset tag</span><span class="r3d-info-val">${dev.asset_tag}</span></div>` : ''}
+            ${dev.serial ? `<div class="r3d-info-row"><span class="r3d-info-lbl">Serial</span><span class="r3d-info-val">${dev.serial}</span></div>` : ''}
+            <div class="r3d-info-actions">
+                <a href="${url}" target="_blank" class="r3d-info-btn">Open in NetBox</a>
+                <a href="${signalTraceUrl}" target="_blank" class="r3d-info-btn r3d-info-btn-accent">Signal Trace</a>
+                <a href="${bayLayoutUrl}" target="_blank" class="r3d-info-btn">Bay Layout</a>
+            </div>
+            <details class="r3d-trace-details" id="r3d-trace-${dev.id}">
+                <summary class="r3d-trace-summary">Internal Signal Paths</summary>
+                <div class="r3d-trace-body">Loading…</div>
+            </details>
         `;
         this._infoPanel.classList.remove('r3d-info-hidden');
+        if (dev.device_type_id) this._loadSignalTrace(dev.device_type_id, dev.id);
+    }
+
+    async _loadSignalTrace(deviceTypeId, deviceId) {
+        const detailsEl = document.getElementById(`r3d-trace-${deviceId}`);
+        const bodyEl = detailsEl?.querySelector('.r3d-trace-body');
+        if (!bodyEl) return;
+        try {
+            const res = await fetch(`/api/plugins/innovace-fibre/signal-routings/?device_type_id=${deviceTypeId}&limit=100`);
+            if (!res.ok) { bodyEl.textContent = 'No routing data.'; return; }
+            const data = await res.json();
+            const routes = (data.results || []);
+            if (!routes.length) { bodyEl.textContent = 'No signal routings defined.'; return; }
+            bodyEl.innerHTML = routes.map(r =>
+                `<div class="r3d-trace-row">
+                    <span class="r3d-trace-port">${r.from_port_name}<sub>${r.from_signal}</sub></span>
+                    <span class="r3d-trace-arrow">${r.bidirectional ? '↔' : '→'}</span>
+                    <span class="r3d-trace-port">${r.to_port_name}<sub>${r.to_signal}</sub></span>
+                </div>`
+            ).join('');
+        } catch (_) { bodyEl.textContent = 'Could not load routing data.'; }
     }
 
     _hideInfo() { this._infoPanel.classList.add('r3d-info-hidden'); }

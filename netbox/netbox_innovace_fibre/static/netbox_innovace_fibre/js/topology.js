@@ -916,8 +916,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-apply-filter').addEventListener('click', loadTopology);
 
   function _csrf() {
-    return document.cookie.split(';').map(c => c.trim())
+    if (window.CSRF_TOKEN) return window.CSRF_TOKEN;
+    const raw = document.cookie.split(';').map(c => c.trim())
       .find(c => c.startsWith('csrftoken='))?.split('=')[1] ?? '';
+    return decodeURIComponent(raw);
   }
 
   loadTopology();
