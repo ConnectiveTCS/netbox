@@ -274,9 +274,14 @@ class PortLayoutApp {
       Object.assign(merged, ed.getPins());
     }
     try {
+      const csrfToken = this._csrfToken();
+      if (!csrfToken) {
+        throw new Error('Missing CSRF token; refresh the page and try again.');
+      }
+
       const res = await fetch(`${API_BASE}/device-types/${this._dtId}/port-layout/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
         body: JSON.stringify({ port_positions: merged }),
       });
       if (!res.ok) {
@@ -290,10 +295,15 @@ class PortLayoutApp {
   }
 
   _csrfToken() {
-    return document.cookie.split(';')
-      .map((c) => c.trim())
-      .find((c) => c.startsWith('csrftoken='))
-      ?.split('=')[1] ?? '';
+    // NetBox injects this value globally; use it first when available.
+    if (window.CSRF_TOKEN && typeof window.CSRF_TOKEN === 'string') {
+      const token = window.CSRF_TOKEN.trim();
+      if (token.length >= 32) return token;
+    }
+
+    const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    if (!match) return '';
+    return decodeURIComponent(match[1]).trim();
   }
 
   _selectPort(portName) {

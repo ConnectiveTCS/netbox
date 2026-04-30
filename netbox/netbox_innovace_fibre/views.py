@@ -1,4 +1,5 @@
 from django.db.models import Count, Q
+from django.http import Http404
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -10,6 +11,16 @@ from .forms import DeviceSignalRoutingForm
 from .models import DeviceSignalRouting, SignalRouting
 from .tables import DeviceCustomMappingTable
 from .tracer import trace_signal_path, trace_signal_path_for_device
+
+
+def _safe_image_url(image_field):
+    """Return a file URL for an ImageField/FileField, or None if unavailable."""
+    if not image_field:
+        return None
+    try:
+        return image_field.url
+    except ValueError:
+        return None
 
 
 class Rack3DView(View):
@@ -156,10 +167,19 @@ class PortLayoutEditorView(View):
         device_type = get_object_or_404(
             DeviceType.objects.select_related('manufacturer'), pk=pk,
         )
-        if not device_type.front_image and not device_type.rear_image:
-            from django.http import Http404
+        front_image_url = _safe_image_url(device_type.front_image)
+        rear_image_url = _safe_image_url(device_type.rear_image)
+        if not front_image_url and not rear_image_url:
             raise Http404('No front or rear image on this device type')
-        return render(request, self.template_name, {'device_type': device_type})
+        return render(
+            request,
+            self.template_name,
+            {
+                'device_type': device_type,
+                'front_image_url': front_image_url,
+                'rear_image_url': rear_image_url,
+            },
+        )
 
 
 class DeviceSignalTraceView(View):

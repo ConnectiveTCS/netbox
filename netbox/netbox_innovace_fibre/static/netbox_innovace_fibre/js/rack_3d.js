@@ -20,7 +20,7 @@ const DEPTH_MAP = { realistic: 28.0, flat: 4.0, schematic: 1.2 };
 const CABLE_CHANNEL_W = 15 / 25.4; // ≈ 5.91 scene-inches per side
 
 // Cable rendering
-const CABLE_PATCH_RADIUS  = 0.12; // scene-inches — intra-rack patch/fibre
+const CABLE_PATCH_RADIUS  = 0.18; // scene-inches — intra-rack patch/fibre
 const CABLE_TRUNK_RADIUS  = 0.28; // scene-inches — inter-rack trunk
 const CABLE_TUBE_SEGS     = 8;    // radial segments on TubeGeometry
 const CABLE_PATH_SEGS     = 20;   // curve sample points
@@ -1395,6 +1395,15 @@ class RackScene {
     for (const dev of devices) {
       const yBottom = this._calcY(dev, rack, sc);
       const deviceH = dev.u_height * U_SCALE_BASE * sc;
+      const deviceDepth = dev.is_full_depth ? depth : depth * 0.55;
+      let deviceZ;
+      if (dev.is_full_depth) {
+        deviceZ = offset.z;
+      } else if (dev.face === "front") {
+        deviceZ = offset.z + depth / 2 - deviceDepth / 2;
+      } else {
+        deviceZ = offset.z - depth / 2 + deviceDepth / 2;
+      }
       map.set(dev.id, {
         worldX:       offset.x,
         worldYBot:    offset.y + yBottom,
@@ -1407,8 +1416,90 @@ class RackScene {
         port_positions:  dev.port_positions  || {},
         deviceW:      RACK_WIDTH - POST_W * 2,
       });
+
+      this._addDeviceBayWorldMapEntries(map, dev, {
+        offset,
+        yBottom,
+        deviceH,
+        deviceDepth,
+        deviceZ,
+      });
     }
     return map;
+  }
+
+  _addDeviceBayWorldMapEntries(map, dev, geom) {
+    const deviceBays = Array.isArray(dev.device_bays) ? dev.device_bays : [];
+    const occupiedBays = deviceBays.filter((b) => b.installed_device_id);
+    if (!occupiedBays.length) return;
+
+    const usableW = (RACK_WIDTH - POST_W * 2) * 0.92;
+    const usableH = geom.deviceH * 0.86;
+    const highestSlot = Math.max(
+      ...deviceBays.map((b) => parseInt(b.face_slot, 10) || 0),
+      0,
+    );
+    const count = Math.max(deviceBays.length, highestSlot);
+    const cols = Math.max(1, Math.ceil(Math.sqrt(count * 2.0)));
+    const rows = Math.max(1, Math.ceil(count / cols));
+    const cellW = usableW / cols;
+    const cellH = usableH / rows;
+    const defaultW = cellW * 0.84;
+    const defaultH = cellH * 0.78;
+    const yTop = usableH / 2 - cellH / 2;
+    const xLeft = -usableW / 2 + cellW / 2;
+    const mountSide = dev.face === "rear" ? "rear" : "front";
+    const faceZ = mountSide === "front"
+      ? geom.deviceZ + geom.deviceDepth / 2
+      : geom.deviceZ - geom.deviceDepth / 2;
+
+    for (const bay of occupiedBays) {
+      const layout =
+        bay.layout && typeof bay.layout === "object" ? bay.layout : null;
+      let localX;
+      let localY;
+      let bayW = defaultW;
+      let bayH = defaultH;
+
+      if (
+        layout &&
+        Number.isFinite(+layout.x) &&
+        Number.isFinite(+layout.y) &&
+        Number.isFinite(+layout.w) &&
+        Number.isFinite(+layout.h) &&
+        +layout.w > 0 &&
+        +layout.h > 0
+      ) {
+        const lx = Math.max(0, Math.min(100, +layout.x));
+        const ly = Math.max(0, Math.min(100, +layout.y));
+        const lw = Math.max(0.5, Math.min(100, +layout.w));
+        const lh = Math.max(0.5, Math.min(100, +layout.h));
+
+        bayW = usableW * (lw / 100);
+        bayH = usableH * (lh / 100);
+        localX = -usableW / 2 + usableW * ((lx + lw / 2) / 100);
+        localY = usableH / 2 - usableH * ((ly + lh / 2) / 100);
+      } else {
+        const slot = Math.max((parseInt(bay.face_slot, 10) || 1) - 1, 0);
+        const row = Math.floor(slot / cols);
+        const col = slot % cols;
+        localX = xLeft + col * cellW;
+        localY = yTop - row * cellH;
+      }
+
+      map.set(bay.installed_device_id, {
+        worldX:       geom.offset.x + localX,
+        worldYBot:    geom.offset.y + geom.yBottom + geom.deviceH / 2 + localY - bayH / 2,
+        worldYTop:    geom.offset.y + geom.yBottom + geom.deviceH / 2 + localY + bayH / 2,
+        frontFaceZ:   faceZ,
+        rearFaceZ:    faceZ,
+        rackCenterZ:  geom.offset.z,
+        rackOffsetX:  geom.offset.x,
+        cable_exit_side: bay.installed_device_cable_exit_side || dev.cable_exit_side || 'left',
+        port_positions:  bay.installed_device_port_positions || {},
+        deviceW:      bayW,
+      });
+    }
   }
 
   // ── Private: utilities ────────────────────────────────────────────────────
@@ -1555,7 +1646,7 @@ class CablePathRouter {
   _intraRackPath(aPos, bPos, aDev, bDev) {
     const aChX  = this._channelX(aDev, aPos.x);
     const bChX  = this._channelX(bDev, bPos.x);
-    const chZ   = aDev.rackCenterZ;
+    const chZ   = Math.max(aDev.frontFaceZ, bDev.frontFaceZ) + 0.65;
     const midY  = (aPos.y + bPos.y) / 2;
     const pts = [
       aPos.clone(),
@@ -1606,12 +1697,29 @@ class CableManager {
 
   build(cables, deviceWorldMap, rackWorldMap) {
     this.clear();
-    if (!cables?.length) return;
+    const debug = {
+      input: cables?.length || 0,
+      built: 0,
+      hiddenBySettings: 0,
+      missingRoute: 0,
+      deviceIds: Array.from(deviceWorldMap.keys()),
+      sample: (cables || []).slice(0, 5),
+    };
+    if (!cables?.length) {
+      window.__rack3dCableDebug = debug;
+      return;
+    }
     const router = new CablePathRouter(deviceWorldMap, rackWorldMap);
     for (const cable of cables) {
-      if (!this._shouldRender(cable)) continue;
+      if (!this._shouldRender(cable)) {
+        debug.hiddenBySettings += 1;
+        continue;
+      }
       const curve = router.computePath(cable);
-      if (!curve) continue;
+      if (!curve) {
+        debug.missingRoute += 1;
+        continue;
+      }
 
       const isInterRack = this._isInterRack(cable);
       const radius = isInterRack ? CABLE_TRUNK_RADIUS : CABLE_PATCH_RADIUS;
@@ -1629,6 +1737,11 @@ class CableManager {
       mesh.userData = { cableId: cable.id, cableData: cable, isCable: true, curve };
       this._group.add(mesh);
       this._entries.push({ mesh, cableData: cable });
+      debug.built += 1;
+    }
+    window.__rack3dCableDebug = debug;
+    if (debug.input && !debug.built) {
+      console.warn("Rack 3D received cables but did not build visible meshes", debug);
     }
   }
 
@@ -1714,7 +1827,7 @@ class CableManager {
     if (FIBRE_CABLE_TYPES.has(t))   return this._settings.showPatch;
     if (NETWORK_CABLE_TYPES.has(t)) return this._settings.showNetwork;
     if (t === 'power')              return this._settings.showPower;
-    return this._settings.showPatch;
+    return this._settings.showPatch || this._settings.showNetwork;
   }
 
   _isInterRack(cable) {

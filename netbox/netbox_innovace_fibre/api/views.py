@@ -19,6 +19,16 @@ from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_fo
 from .serializers import DeviceSignalRoutingSerializer, DeviceTypeSignalMetaSerializer, SignalRoutingSerializer
 
 
+def _safe_file_url(file_field):
+    """Return file URL or None when field is empty/broken."""
+    if not file_field:
+        return None
+    try:
+        return file_field.url
+    except ValueError:
+        return None
+
+
 class DeviceTypeSignalMetaViewSet(ModelViewSet):
     queryset = DeviceTypeSignalMeta.objects.all()
     serializer_class = DeviceTypeSignalMetaSerializer
@@ -204,11 +214,15 @@ class Rack3DDataAPIView(APIView):
             .order_by('position')
         )
 
+        devices = list(devices_qs)
+        child_devices = []
+        physical_rack_by_device_id = {dev.pk: dev.rack_id for dev in devices}
+
         device_list = []
-        for dev in devices_qs:
+        for dev in devices:
             dt = dev.device_type
-            front_image = dt.front_image.url if dt.front_image else None
-            rear_image  = dt.rear_image.url  if dt.rear_image  else None
+            front_image = _safe_file_url(dt.front_image)
+            rear_image  = _safe_file_url(dt.rear_image)
             role_name = dev.role.name if dev.role_id else ''
             role_slug = dev.role.slug if dev.role_id else ''
             is_patch_enclosure = _is_patch_enclosure_role(role_name, role_slug)
@@ -225,8 +239,8 @@ class Rack3DDataAPIView(APIView):
                     module_type = module.module_type
                     module_image = None
                     images = list(module_type.images.all()) if module_type else []
-                    if images and images[0].image:
-                        module_image = images[0].image.url
+                    if images:
+                        module_image = _safe_file_url(images[0].image)
 
                     module_bays.append({
                         'id': bay.pk,
@@ -240,36 +254,38 @@ class Rack3DDataAPIView(APIView):
                         'module_image': module_image,
                     })
 
-                for idx, bay in enumerate(dev.devicebays.order_by('name'), start=1):
-                    installed = bay.installed_device if bay.installed_device_id else None
-                    installed_dt = installed.device_type if installed else None
-                    device_image = None
-                    if installed_dt:
-                        if installed_dt.front_image:
-                            device_image = installed_dt.front_image.url
-                        elif installed_dt.rear_image:
-                            device_image = installed_dt.rear_image.url
+            for idx, bay in enumerate(dev.devicebays.order_by('name'), start=1):
+                installed = bay.installed_device if bay.installed_device_id else None
+                installed_dt = installed.device_type if installed else None
+                if installed:
+                    child_devices.append(installed)
+                    physical_rack_by_device_id[installed.pk] = rack.pk
+                device_image = None
+                if installed_dt:
+                    device_image = _safe_file_url(installed_dt.front_image) or _safe_file_url(installed_dt.rear_image)
 
-                    device_bays.append({
-                        'id': bay.pk,
-                        'name': bay.name,
-                        'face_slot': idx,
-                        'layout': _device_bay_layout(bay.description),
-                        'occupied': bool(installed),
-                        'installed_device_id': installed.pk if installed else None,
-                        'installed_device_name': installed.name if installed else '',
-                        'installed_device_type': installed_dt.model if installed_dt else '',
-                        'installed_device_manufacturer': installed_dt.manufacturer.name if installed_dt and installed_dt.manufacturer_id else '',
-                        'installed_device_role': installed.role.name if installed and installed.role_id else '',
-                        'installed_device_status': str(installed.status) if installed else '',
-                        'installed_device_face': installed.face if installed else '',
-                        'installed_device_u_height': float(installed_dt.u_height) if installed_dt else None,
-                        'installed_device_is_full_depth': installed_dt.is_full_depth if installed_dt else False,
-                        'installed_device_asset_tag': installed.asset_tag if installed else '',
-                        'installed_device_serial': installed.serial if installed else '',
-                        'installed_device_url': f'/dcim/devices/{installed.pk}/' if installed else '',
-                        'device_image': device_image,
-                    })
+                device_bays.append({
+                    'id': bay.pk,
+                    'name': bay.name,
+                    'face_slot': idx,
+                    'layout': _device_bay_layout(bay.description),
+                    'occupied': bool(installed),
+                    'installed_device_id': installed.pk if installed else None,
+                    'installed_device_name': installed.name if installed else '',
+                    'installed_device_type': installed_dt.model if installed_dt else '',
+                    'installed_device_manufacturer': installed_dt.manufacturer.name if installed_dt and installed_dt.manufacturer_id else '',
+                    'installed_device_role': installed.role.name if installed and installed.role_id else '',
+                    'installed_device_status': str(installed.status) if installed else '',
+                    'installed_device_face': installed.face if installed else '',
+                    'installed_device_u_height': float(installed_dt.u_height) if installed_dt else None,
+                    'installed_device_is_full_depth': installed_dt.is_full_depth if installed_dt else False,
+                    'installed_device_asset_tag': installed.asset_tag if installed else '',
+                    'installed_device_serial': installed.serial if installed else '',
+                    'installed_device_url': f'/dcim/devices/{installed.pk}/' if installed else '',
+                    'installed_device_cable_exit_side': installed.custom_field_data.get('cable_exit_side') if installed else '',
+                    'installed_device_port_positions': installed_dt.custom_field_data.get('port_positions') if installed_dt else {},
+                    'device_image': device_image,
+                })
 
             device_list.append({
                 'id':             dev.pk,
@@ -297,7 +313,7 @@ class Rack3DDataAPIView(APIView):
                 'port_positions':  dt.custom_field_data.get('port_positions') or {},
             })
 
-        cables = _build_rack_cables(devices_qs)
+        cables = _build_rack_cables(devices + child_devices, physical_rack_by_device_id)
 
         return Response({
             'rack': {
@@ -582,7 +598,7 @@ def _set_device_bay_layout_marker(description, layout):
     return f'{base} {marker}'.strip()
 
 
-def _build_rack_cables(devices_qs):
+def _build_rack_cables(devices_qs, physical_rack_by_device_id=None):
     """
     Build a cable list for all cables that have at least one termination on a device
     in this rack (already fetched with frontports/rearports/interfaces prefetched).
@@ -599,9 +615,10 @@ def _build_rack_cables(devices_qs):
 
     port_lookup = {}  # (ct_id, port_id) → (port_type_label, port_name, device_id, rack_id)
     cable_id_set = set()
+    physical_rack_by_device_id = physical_rack_by_device_id or {}
 
     for dev in devices_qs:
-        rack_id = dev.rack_id
+        rack_id = physical_rack_by_device_id.get(dev.pk, dev.rack_id)
         for port in dev.frontports.all():
             port_lookup[(fp_ct_id, port.pk)] = ('frontport', port.name, dev.pk, rack_id)
             if port.cable_id:
@@ -717,8 +734,8 @@ class PortLayoutAPIView(APIView):
             'device_type_id': dt.pk,
             'model':          dt.model,
             'manufacturer':   dt.manufacturer.name if dt.manufacturer_id else '',
-            'front_image':    dt.front_image.url if dt.front_image else None,
-            'rear_image':     dt.rear_image.url  if dt.rear_image  else None,
+            'front_image':    _safe_file_url(dt.front_image),
+            'rear_image':     _safe_file_url(dt.rear_image),
             'port_positions': dt.custom_field_data.get('port_positions') or {},
             'ports':          _enumerate_device_type_ports(dt),
         })
@@ -754,15 +771,15 @@ class PortLayoutListAPIView(APIView):
         )
         result = []
         for dt in qs:
-            has_front = bool(dt.front_image)
-            has_rear  = bool(dt.rear_image)
+            front_image = _safe_file_url(dt.front_image)
+            rear_image = _safe_file_url(dt.rear_image)
             positions = dt.custom_field_data.get('port_positions') or {}
             result.append({
                 'id':               dt.pk,
                 'model':            dt.model,
                 'manufacturer':     dt.manufacturer.name if dt.manufacturer_id else '',
-                'front_image':      dt.front_image.url if has_front else None,
-                'rear_image':       dt.rear_image.url  if has_rear  else None,
+                'front_image':      front_image,
+                'rear_image':       rear_image,
                 'port_positions_set': bool(positions),
                 'port_count':         len(positions),
             })
