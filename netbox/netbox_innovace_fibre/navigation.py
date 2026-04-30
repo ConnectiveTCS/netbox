@@ -16,6 +16,10 @@ menu = PluginMenu(
                 link='plugins:netbox_innovace_fibre:rack_3d',
                 link_text='3D Rack View',
             ),
+            PluginMenuItem(
+                link='plugins:netbox_innovace_fibre:port_layout_list',
+                link_text='Port Layout Editor',
+            ),
         )),
     ),
     icon_class='mdi mdi-lan',

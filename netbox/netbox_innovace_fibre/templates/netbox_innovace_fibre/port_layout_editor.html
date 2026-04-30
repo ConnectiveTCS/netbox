@@ -1,0 +1,101 @@
+{% extends 'base/layout.html' %}
+{% load static %}
+
+{% block title %}Port Layout — {{ device_type }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3" id="iff-port-editor-root"
+     data-device-type-id="{{ device_type.pk }}">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1">Port Layout Editor</h2>
+      <div class="text-muted small">{{ device_type.manufacturer.name }} — {{ device_type.model }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm"
+         href="{% url 'plugins:netbox_innovace_fibre:port_layout_list' %}">Back to List</a>
+      <a class="btn btn-outline-secondary btn-sm"
+         href="/dcim/device-types/{{ device_type.pk }}/">Open Device Type</a>
+    </div>
+  </div>
+
+  {# Toolbar #}
+  <div class="card mb-3">
+    <div class="card-body d-flex flex-wrap gap-2 align-items-center py-2">
+      <button id="iff-pl-save" class="btn btn-primary btn-sm">Save Positions</button>
+      <button id="iff-pl-reload" class="btn btn-outline-secondary btn-sm">Reload</button>
+      <label class="form-check ms-2 mb-0">
+        <input id="iff-pl-unpositioned-only" class="form-check-input" type="checkbox">
+        <span class="form-check-label small">Unpositioned only</span>
+      </label>
+      <span id="iff-pl-status" class="small text-muted ms-auto">Loading…</span>
+    </div>
+  </div>
+
+  <div class="alert alert-info py-2 mb-3 small">
+    Click a port in the list, then click on the image to place it. Drag existing pins to reposition.
+    Coordinates are stored as normalised 0–1 fractions of the image dimensions.
+  </div>
+
+  {# Face tabs #}
+  <ul class="nav nav-tabs mb-3" id="iff-pl-tabs">
+    {% if device_type.front_image %}
+    <li class="nav-item">
+      <button class="nav-link active" data-face="front">Front</button>
+    </li>
+    {% endif %}
+    {% if device_type.rear_image %}
+    <li class="nav-item">
+      <button class="nav-link{% if not device_type.front_image %} active{% endif %}"
+              data-face="rear">Rear</button>
+    </li>
+    {% endif %}
+  </ul>
+
+  <div class="row g-3">
+    {# Canvas column #}
+    <div class="col-lg-8">
+      {% if device_type.front_image %}
+      <div id="iff-pl-pane-front" class="iff-pl-pane">
+        <canvas id="iff-pl-canvas-front"
+                style="width:100%;border:1px solid #d0d7de;border-radius:6px;cursor:crosshair;"></canvas>
+      </div>
+      {% endif %}
+      {% if device_type.rear_image %}
+      <div id="iff-pl-pane-rear" class="iff-pl-pane"
+           style="display:{% if device_type.front_image %}none{% else %}block{% endif %}">
+        <canvas id="iff-pl-canvas-rear"
+                style="width:100%;border:1px solid #d0d7de;border-radius:6px;cursor:crosshair;"></canvas>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Port list column #}
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header py-2 small fw-bold">Ports</div>
+        <div class="card-body p-0" style="overflow-y:auto;max-height:600px;">
+          <ul class="list-group list-group-flush" id="iff-pl-port-list"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .iff-pin-label { font: 11px/1 system-ui, sans-serif; pointer-events: none; }
+  .iff-pl-port-item { cursor: pointer; }
+  .iff-pl-port-item.active { background: var(--bs-primary); color: #fff; }
+  .iff-pl-port-item .badge { font-size: 0.7em; }
+</style>
+
+<script>
+  window.IFF_PL_CONFIG = {
+    deviceTypeId: {{ device_type.pk }},
+    frontImage: "{{ device_type.front_image.url|default:'' }}",
+    rearImage:  "{{ device_type.rear_image.url|default:'' }}",
+  };
+</script>
+<script src="{% static 'netbox_innovace_fibre/js/port_layout_editor.js' %}"></script>
+{% endblock %}

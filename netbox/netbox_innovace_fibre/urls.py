@@ -6,6 +6,8 @@ app_name = 'netbox_innovace_fibre'
 
 urlpatterns = [
     path('racks/3d/', views.Rack3DView.as_view(), name='rack_3d'),
+    path('port-layout/', views.PortLayoutListView.as_view(), name='port_layout_list'),
+    path('device-types/<int:pk>/port-layout/', views.PortLayoutEditorView.as_view(), name='port_layout_editor'),
     path('devices/<int:pk>/bay-layout/', views.PatchEnclosureBayLayoutView.as_view(), name='patch_enclosure_bay_layout'),
     path('topology/', views.TopologyView.as_view(), name='topology'),
     path('custom-mapping/', views.CustomMappingListView.as_view(), name='custom_mapping_list'),

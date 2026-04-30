@@ -345,6 +345,40 @@
     margin: 0;
   }
 
+  .r3d-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--r3d-text);
+    cursor: pointer;
+    padding: 2px 0;
+  }
+
+  .r3d-checkbox-row input[type="checkbox"] {
+    accent-color: var(--r3d-accent);
+    cursor: pointer;
+  }
+
+  .r3d-slider {
+    width: 100%;
+    accent-color: var(--r3d-accent);
+    margin-top: 2px;
+    cursor: pointer;
+  }
+
+  .r3d-cable-tooltip {
+    background: rgba(10, 12, 20, 0.92);
+    color: #c9d1e0;
+    padding: 5px 9px;
+    border-radius: 4px;
+    font-size: 11px;
+    pointer-events: none;
+    white-space: nowrap;
+    border: 1px solid #2a3a5a;
+    line-height: 1.5;
+  }
+
   /* ── Layout Manager overlay ──────────────────────────── */
   #rack3d-root {
     --r3d-canvas-bg: #0d1018;
@@ -1007,6 +1041,27 @@
           </div>
         </div>
 
+        <hr class="r3d-config-divider">
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Cables</span>
+          <label class="r3d-checkbox-row">
+            <input type="checkbox" id="cfg-cable-patch" checked> Patch / Fibre
+          </label>
+          <label class="r3d-checkbox-row">
+            <input type="checkbox" id="cfg-cable-network" checked> Network (Cat/DAC)
+          </label>
+          <label class="r3d-checkbox-row">
+            <input type="checkbox" id="cfg-cable-power"> Power
+          </label>
+        </div>
+
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Cable Opacity</span>
+          <input type="range" id="cfg-cable-opacity" min="0.1" max="1.0" step="0.05" value="1.0"
+            class="r3d-slider" title="Cable visibility">
+        </div>
+
       </div>
     </div>
 
@@ -1117,6 +1172,12 @@
     <div class="r3d-ctx-item" data-action="rotateCCW">↺ Rotate CCW (−90°)</div>
     <hr class="r3d-ctx-sep">
     <div class="r3d-ctx-item danger" data-action="remove">🗑 Remove</div>
+  </div>
+
+  {# ── Cable right-click context menu ───────────────────── #}
+  <div id="r3d-cable-ctx-menu" class="r3d-ctx-hidden">
+    <div class="r3d-ctx-item" data-action="traceSignal">⚡ Trace Signal</div>
+    <div class="r3d-ctx-item" data-action="openCable">↗ Open in NetBox</div>
   </div>
 
   {# ── Device info panel ────────────────────────────────── #}

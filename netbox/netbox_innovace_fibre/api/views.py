@@ -1,5 +1,7 @@
 import re
 
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,7 +9,10 @@ from rest_framework.viewsets import ModelViewSet
 
 from netbox.api.authentication import IsAuthenticatedOrLoginNotRequired
 
-from dcim.models import Cable, CableTermination, Device, DeviceBay, DeviceRole, ModuleBay, Rack, Site
+from dcim.models import (
+    Cable, CableTermination, Device, DeviceBay, DeviceRole, DeviceType,
+    FrontPort, Interface, ModuleBay, Rack, RearPort, Site,
+)
 from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, FloorPlanVersion, SignalRouting
 from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_for_device
 
@@ -192,6 +197,9 @@ class Rack3DDataAPIView(APIView):
                 'modulebays__installed_module__module_type__images',
                 'devicebays__installed_device__device_type__manufacturer',
                 'devicebays__installed_device__role',
+                'frontports',
+                'rearports',
+                'interfaces',
             )
             .order_by('position')
         )
@@ -285,18 +293,24 @@ class Rack3DDataAPIView(APIView):
                 'module_bays':    module_bays,
                 'device_bays':    device_bays,
                 'url':            f'/dcim/devices/{dev.pk}/',
+                'cable_exit_side': dev.custom_field_data.get('cable_exit_side') or 'left',
+                'port_positions':  dt.custom_field_data.get('port_positions') or {},
             })
+
+        cables = _build_rack_cables(devices_qs)
 
         return Response({
             'rack': {
-                'id':            rack.pk,
-                'name':          rack.name,
-                'u_height':      effective_u_height,
-                'starting_unit': effective_starting,
-                'desc_units':    effective_desc_units,
-                'site':          rack.site.name if rack.site_id else '',
+                'id':                   rack.pk,
+                'name':                 rack.name,
+                'u_height':             effective_u_height,
+                'starting_unit':        effective_starting,
+                'desc_units':           effective_desc_units,
+                'site':                 rack.site.name if rack.site_id else '',
+                'inter_rack_exit_side': rack.custom_field_data.get('inter_rack_exit_side') or 'right',
             },
             'devices': device_list,
+            'cables':  cables,
         })
 
 
@@ -566,3 +580,190 @@ def _set_device_bay_layout_marker(description, layout):
         return base
     marker = f"__iff_layout__={_layout_to_text(layout)}"
     return f'{base} {marker}'.strip()
+
+
+def _build_rack_cables(devices_qs):
+    """
+    Build a cable list for all cables that have at least one termination on a device
+    in this rack (already fetched with frontports/rearports/interfaces prefetched).
+
+    Returns a list of dicts with the shape:
+      {id, label, color, type, a_terminations: [...], b_terminations: [...]}
+    where each termination is {port_name, port_type, device_id, rack_id}.
+    """
+    # Build a port lookup from the prefetched port data so we can resolve
+    # terminations without extra queries for in-rack ports.
+    fp_ct_id = ContentType.objects.get_for_model(FrontPort).pk
+    rp_ct_id = ContentType.objects.get_for_model(RearPort).pk
+    if_ct_id = ContentType.objects.get_for_model(Interface).pk
+
+    port_lookup = {}  # (ct_id, port_id) → (port_type_label, port_name, device_id, rack_id)
+    cable_id_set = set()
+
+    for dev in devices_qs:
+        rack_id = dev.rack_id
+        for port in dev.frontports.all():
+            port_lookup[(fp_ct_id, port.pk)] = ('frontport', port.name, dev.pk, rack_id)
+            if port.cable_id:
+                cable_id_set.add(port.cable_id)
+        for port in dev.rearports.all():
+            port_lookup[(rp_ct_id, port.pk)] = ('rearport', port.name, dev.pk, rack_id)
+            if port.cable_id:
+                cable_id_set.add(port.cable_id)
+        for port in dev.interfaces.all():
+            port_lookup[(if_ct_id, port.pk)] = ('interface', port.name, dev.pk, rack_id)
+            if port.cable_id:
+                cable_id_set.add(port.cable_id)
+
+    if not cable_id_set:
+        return []
+
+    # Fetch all terminations for those cables in two queries.
+    terminations_qs = (
+        CableTermination.objects
+        .filter(cable_id__in=cable_id_set)
+        .select_related('cable', 'termination_type')
+    )
+
+    # For terminations not in our rack (inter-rack), we need to resolve
+    # device_id / rack_id from the actual port objects.  Collect unknowns first,
+    # then fetch by content-type in bulk to avoid per-row queries.
+    unknown_by_ct: dict[int, list[int]] = {}
+    all_term_rows = list(terminations_qs)
+    for ct_row in all_term_rows:
+        key = (ct_row.termination_type_id, ct_row.termination_id)
+        if key not in port_lookup:
+            ct_id = ct_row.termination_type_id
+            unknown_by_ct.setdefault(ct_id, []).append(ct_row.termination_id)
+
+    # Resolve unknown ports by content type → model class.
+    ct_model_map = {fp_ct_id: FrontPort, rp_ct_id: RearPort, if_ct_id: Interface}
+    ct_label_map = {fp_ct_id: 'frontport', rp_ct_id: 'rearport', if_ct_id: 'interface'}
+    for ct_id, port_ids in unknown_by_ct.items():
+        model_cls = ct_model_map.get(ct_id)
+        if not model_cls:
+            continue
+        label = ct_label_map[ct_id]
+        for port in model_cls.objects.filter(pk__in=port_ids).select_related('device'):
+            dev = port.device
+            port_lookup[(ct_id, port.pk)] = (label, port.name, dev.pk if dev else None, dev.rack_id if dev else None)
+
+    # Group terminations by cable.
+    cable_terms: dict[int, dict] = {}
+    for ct_row in all_term_rows:
+        cid = ct_row.cable_id
+        if cid not in cable_terms:
+            c = ct_row.cable
+            cable_terms[cid] = {
+                'id':    c.pk,
+                'label': c.label or '',
+                'color': c.color or '',
+                'type':  c.type or '',
+                'a_terminations': [],
+                'b_terminations': [],
+            }
+        key = (ct_row.termination_type_id, ct_row.termination_id)
+        info = port_lookup.get(key)
+        if info:
+            port_type, port_name, device_id, rack_id = info
+        else:
+            port_type = ct_row.termination_type.model if ct_row.termination_type_id else 'unknown'
+            port_name = f'#{ct_row.termination_id}'
+            device_id = None
+            rack_id   = None
+
+        entry = {
+            'port_name': port_name,
+            'port_type': port_type,
+            'device_id': device_id,
+            'rack_id':   rack_id,
+        }
+        end_key = 'a_terminations' if ct_row.cable_end == 'A' else 'b_terminations'
+        cable_terms[cid][end_key].append(entry)
+
+    return list(cable_terms.values())
+
+
+def _enumerate_device_type_ports(dt):
+    """Return all port template names on a DeviceType as a sorted list."""
+    ports = []
+    for p in dt.frontporttemplates.all():
+        ports.append({'name': p.name, 'type': 'frontport', 'face': 'front'})
+    for p in dt.rearporttemplates.all():
+        ports.append({'name': p.name, 'type': 'rearport', 'face': 'rear'})
+    for p in dt.interfacetemplates.all():
+        ports.append({'name': p.name, 'type': 'interface', 'face': 'front'})
+    return sorted(ports, key=lambda x: x['name'])
+
+
+class PortLayoutAPIView(APIView):
+    """
+    GET  /api/plugins/innovace-fibre/device-types/<pk>/port-layout/
+    POST /api/plugins/innovace-fibre/device-types/<pk>/port-layout/
+
+    Reads and writes the port_positions custom field on a DeviceType.
+    Only available for device types that have a front or rear image.
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request, pk):
+        dt = get_object_or_404(
+            DeviceType.objects
+            .select_related('manufacturer')
+            .prefetch_related('frontporttemplates', 'rearporttemplates', 'interfacetemplates'),
+            pk=pk,
+        )
+        return Response({
+            'device_type_id': dt.pk,
+            'model':          dt.model,
+            'manufacturer':   dt.manufacturer.name if dt.manufacturer_id else '',
+            'front_image':    dt.front_image.url if dt.front_image else None,
+            'rear_image':     dt.rear_image.url  if dt.rear_image  else None,
+            'port_positions': dt.custom_field_data.get('port_positions') or {},
+            'ports':          _enumerate_device_type_ports(dt),
+        })
+
+    def post(self, request, pk):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=403)
+        dt = get_object_or_404(DeviceType, pk=pk)
+        positions = request.data.get('port_positions')
+        if not isinstance(positions, dict):
+            return Response({'error': 'port_positions must be a JSON object'}, status=400)
+        dt.custom_field_data['port_positions'] = positions
+        dt.save(update_fields=['custom_field_data'])
+        return Response({'saved': True, 'port_positions': positions})
+
+
+class PortLayoutListAPIView(APIView):
+    """
+    GET /api/plugins/innovace-fibre/device-types/port-layout-list/
+
+    Returns all DeviceTypes that have a front or rear image, with a flag
+    indicating whether port_positions have been configured.
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request):
+        qs = (
+            DeviceType.objects
+            .select_related('manufacturer')
+            .filter(Q(front_image__isnull=False) | Q(rear_image__isnull=False))
+            .exclude(front_image='', rear_image='')
+            .order_by('manufacturer__name', 'model')
+        )
+        result = []
+        for dt in qs:
+            has_front = bool(dt.front_image)
+            has_rear  = bool(dt.rear_image)
+            positions = dt.custom_field_data.get('port_positions') or {}
+            result.append({
+                'id':               dt.pk,
+                'model':            dt.model,
+                'manufacturer':     dt.manufacturer.name if dt.manufacturer_id else '',
+                'front_image':      dt.front_image.url if has_front else None,
+                'rear_image':       dt.rear_image.url  if has_rear  else None,
+                'port_positions_set': bool(positions),
+                'port_count':         len(positions),
+            })
+        return Response({'device_types': result})

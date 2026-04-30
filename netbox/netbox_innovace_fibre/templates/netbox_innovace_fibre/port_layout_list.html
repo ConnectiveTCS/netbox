@@ -1,0 +1,77 @@
+{% extends 'base/layout.html' %}
+{% load static %}
+
+{% block title %}Port Layout Editor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Port Layout Editor</h2>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'plugins:netbox_innovace_fibre:rack_3d' %}">3D Rack View</a>
+  </div>
+
+  <div class="alert alert-info py-2 mb-3 small">
+    Define the 2D position of each port on the device face image. Positions are used by the 3D rack view
+    to route cables from the correct port location. Only device types with a front or rear image are shown.
+  </div>
+
+  {% if device_types %}
+  <div class="card">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Manufacturer</th>
+            <th>Model</th>
+            <th>Front Image</th>
+            <th>Rear Image</th>
+            <th>Positions Set</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dt in device_types %}
+          <tr>
+            <td>{{ dt.manufacturer.name }}</td>
+            <td>
+              <a href="/dcim/device-types/{{ dt.pk }}/">{{ dt.model }}</a>
+            </td>
+            <td>
+              {% if dt.front_image %}
+                <span class="badge bg-success">Yes</span>
+              {% else %}
+                <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if dt.rear_image %}
+                <span class="badge bg-success">Yes</span>
+              {% else %}
+                <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if dt.custom_field_data.port_positions %}
+                <span class="badge bg-success">Yes</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">No</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{% url 'plugins:netbox_innovace_fibre:port_layout_editor' pk=dt.pk %}"
+                 class="btn btn-primary btn-sm">Edit Layout</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">
+    No device types with front or rear images found. Upload device images in
+    <a href="/dcim/device-types/">Device Types</a> first.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

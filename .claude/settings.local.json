@@ -27,7 +27,8 @@
       "PowerShell(docker compose exec -T netbox bash -c \"cat /proc/1/cmdline | tr '\\\\0' ' '\")",
       "PowerShell(docker compose logs --tail=50 netbox 2>&1 | Where-Object { $_ -match \"ERROR|Exception|Traceback|racks|500\" })",
       "PowerShell(docker compose logs --tail=80 netbox 2>&1)",
-      "PowerShell(docker compose logs --tail=100 nginx 2>&1)"
+      "PowerShell(docker compose logs --tail=100 nginx 2>&1)",
+      "Bash(python -c \"from extras.models import CustomField, CustomFieldChoiceSet; from extras.choices import CustomFieldTypeChoices; print\\('OK'\\)\")"
     ]
   }
 }

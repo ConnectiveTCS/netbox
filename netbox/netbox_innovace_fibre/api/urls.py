@@ -7,6 +7,8 @@ from .views import (
     DeviceSignalTraceAPIView,
     DeviceTypeSignalMetaViewSet,
     FloorPlanAPIView,
+    PortLayoutAPIView,
+    PortLayoutListAPIView,
     Rack3DDataAPIView,
     RackListAPIView,
     SignalRoutingViewSet,
@@ -27,5 +29,8 @@ urlpatterns = [
     path('racks/<int:pk>/3d-data/', Rack3DDataAPIView.as_view(), name='rack-3d-data'),
     path('devices/<int:pk>/bay-layout/', BayLayoutAPIView.as_view(), name='bay-layout'),
     path('floor-plan/', FloorPlanAPIView.as_view(), name='floor-plan'),
+    # Port layout editor API (must come before the <int:pk> route to avoid ambiguity)
+    path('device-types/port-layout-list/', PortLayoutListAPIView.as_view(), name='port-layout-list'),
+    path('device-types/<int:pk>/port-layout/', PortLayoutAPIView.as_view(), name='port-layout'),
 ]
 urlpatterns += router.urls

@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -134,6 +134,32 @@ class DeviceSignalRoutingDeleteView(View):
         return HttpResponseRedirect(
             reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
         )
+
+
+class PortLayoutListView(View):
+    template_name = 'netbox_innovace_fibre/port_layout_list.html'
+
+    def get(self, request):
+        device_types = (
+            DeviceType.objects
+            .exclude(Q(front_image='') & Q(rear_image=''))
+            .select_related('manufacturer')
+            .order_by('manufacturer__name', 'model')
+        )
+        return render(request, self.template_name, {'device_types': device_types})
+
+
+class PortLayoutEditorView(View):
+    template_name = 'netbox_innovace_fibre/port_layout_editor.html'
+
+    def get(self, request, pk):
+        device_type = get_object_or_404(
+            DeviceType.objects.select_related('manufacturer'), pk=pk,
+        )
+        if not device_type.front_image and not device_type.rear_image:
+            from django.http import Http404
+            raise Http404('No front or rear image on this device type')
+        return render(request, self.template_name, {'device_type': device_type})
 
 
 class DeviceSignalTraceView(View):
