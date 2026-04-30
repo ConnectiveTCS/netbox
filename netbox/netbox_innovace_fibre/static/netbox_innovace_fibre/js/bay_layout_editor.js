@@ -1,7 +1,9 @@
 function getCsrfToken() {
   if (window.CSRF_TOKEN) return window.CSRF_TOKEN;
-  const match = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
-  return match ? match.trim().split('=')[1] : '';
+  const match = document.cookie
+    .split(";")
+    .find((c) => c.trim().startsWith("csrftoken="));
+  return match ? match.trim().split("=")[1] : "";
 }
 
 function clamp(v, min, max) {
@@ -19,7 +21,7 @@ function overlaps(a, b) {
 class BayCanvasEditor {
   constructor(canvas, statusSetter) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext("2d");
     this.status = statusSetter;
     this.items = [];
     this.activeId = null;
@@ -28,7 +30,12 @@ class BayCanvasEditor {
     this.preventOverlap = true;
     this.grid = 20;
     this.padding = 22;
-    this.bound = { x: this.padding, y: this.padding, w: canvas.width - this.padding * 2, h: canvas.height - this.padding * 2 };
+    this.bound = {
+      x: this.padding,
+      y: this.padding,
+      w: canvas.width - this.padding * 2,
+      h: canvas.height - this.padding * 2,
+    };
     this.onSelectionChange = null;
     this._bind();
     this.render();
@@ -62,7 +69,7 @@ class BayCanvasEditor {
   }
 
   getActiveItem() {
-    return this.items.find(v => v.id === this.activeId) || null;
+    return this.items.find((v) => v.id === this.activeId) || null;
   }
 
   moveActive(dx, dy) {
@@ -77,12 +84,12 @@ class BayCanvasEditor {
 
     const candidate = { x: nx, y: ny, w: it.w, h: it.h };
     if (this.preventOverlap) {
-      const blocked = this.items.some(other => {
+      const blocked = this.items.some((other) => {
         if (other.id === it.id) return false;
         return overlaps(candidate, other);
       });
       if (blocked) {
-        this.status('Overlap blocked');
+        this.status("Overlap blocked");
         return false;
       }
     }
@@ -100,12 +107,12 @@ class BayCanvasEditor {
     const ny = (100 - it.h) / 2;
     const candidate = { x: nx, y: ny, w: it.w, h: it.h };
     if (this.preventOverlap) {
-      const blocked = this.items.some(other => {
+      const blocked = this.items.some((other) => {
         if (other.id === it.id) return false;
         return overlaps(candidate, other);
       });
       if (blocked) {
-        this.status('Overlap blocked');
+        this.status("Overlap blocked");
         return false;
       }
     }
@@ -117,9 +124,14 @@ class BayCanvasEditor {
   }
 
   getLayouts() {
-    return this.items.map(it => ({
+    return this.items.map((it) => ({
       id: it.id,
-      layout: { x: +it.x.toFixed(2), y: +it.y.toFixed(2), w: +it.w.toFixed(2), h: +it.h.toFixed(2) },
+      layout: {
+        x: +it.x.toFixed(2),
+        y: +it.y.toFixed(2),
+        w: +it.w.toFixed(2),
+        h: +it.h.toFixed(2),
+      },
     }));
   }
 
@@ -145,10 +157,10 @@ class BayCanvasEditor {
   }
 
   _bind() {
-    this.canvas.addEventListener('mousedown', e => this._onDown(e));
-    this.canvas.addEventListener('mousemove', e => this._onMove(e));
-    this.canvas.addEventListener('mouseup', () => this._onUp());
-    this.canvas.addEventListener('mouseleave', () => this._onUp());
+    this.canvas.addEventListener("mousedown", (e) => this._onDown(e));
+    this.canvas.addEventListener("mousemove", (e) => this._onMove(e));
+    this.canvas.addEventListener("mouseup", () => this._onUp());
+    this.canvas.addEventListener("mouseleave", () => this._onUp());
   }
 
   _canvasPos(evt) {
@@ -187,7 +199,7 @@ class BayCanvasEditor {
       if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
         const hs = 10;
         const inResize = x >= r.x + r.w - hs && y >= r.y + r.h - hs;
-        return { item: it, mode: inResize ? 'resize' : 'move', rect: r };
+        return { item: it, mode: inResize ? "resize" : "move", rect: r };
       }
     }
     return null;
@@ -213,11 +225,15 @@ class BayCanvasEditor {
     const [x, y] = this._canvasPos(evt);
     if (!this.drag) {
       const hit = this._hitTest(x, y);
-      this.canvas.style.cursor = hit ? (hit.mode === 'resize' ? 'nwse-resize' : 'move') : 'default';
+      this.canvas.style.cursor = hit
+        ? hit.mode === "resize"
+          ? "nwse-resize"
+          : "move"
+        : "default";
       return;
     }
 
-    const it = this.items.find(v => v.id === this.drag.id);
+    const it = this.items.find((v) => v.id === this.drag.id);
     if (!it) return;
 
     const delta = this._fromCanvasDelta(x - this.drag.x, y - this.drag.y);
@@ -226,7 +242,7 @@ class BayCanvasEditor {
     let nw = this.drag.start.w;
     let nh = this.drag.start.h;
 
-    if (this.drag.mode === 'move') {
+    if (this.drag.mode === "move") {
       nx = this.drag.start.x + delta.dx;
       ny = this.drag.start.y + delta.dy;
     } else {
@@ -248,12 +264,12 @@ class BayCanvasEditor {
 
     const candidate = { x: nx, y: ny, w: nw, h: nh };
     if (this.preventOverlap) {
-      const blocked = this.items.some(other => {
+      const blocked = this.items.some((other) => {
         if (other.id === it.id) return false;
         return overlaps(candidate, other);
       });
       if (blocked) {
-        this.status('Overlap blocked');
+        this.status("Overlap blocked");
         return;
       }
     }
@@ -276,38 +292,44 @@ class BayCanvasEditor {
     const { ctx, canvas } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#f8fafc';
+    ctx.fillStyle = "#f8fafc";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.strokeStyle = '#d0d7de';
+    ctx.strokeStyle = "#d0d7de";
     ctx.lineWidth = 1;
     ctx.strokeRect(this.bound.x, this.bound.y, this.bound.w, this.bound.h);
 
-    ctx.strokeStyle = '#e5e7eb';
+    ctx.strokeStyle = "#e5e7eb";
     for (let i = 1; i < 10; i++) {
       const gx = this.bound.x + (this.bound.w * i) / 10;
       const gy = this.bound.y + (this.bound.h * i) / 10;
-      ctx.beginPath(); ctx.moveTo(gx, this.bound.y); ctx.lineTo(gx, this.bound.y + this.bound.h); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(this.bound.x, gy); ctx.lineTo(this.bound.x + this.bound.w, gy); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(gx, this.bound.y);
+      ctx.lineTo(gx, this.bound.y + this.bound.h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(this.bound.x, gy);
+      ctx.lineTo(this.bound.x + this.bound.w, gy);
+      ctx.stroke();
     }
 
     for (const it of this.items) {
       const r = this._toCanvasRect(it);
       const active = it.id === this.activeId;
-      ctx.fillStyle = active ? '#3b82f6' : '#2563eb';
+      ctx.fillStyle = active ? "#3b82f6" : "#2563eb";
       ctx.globalAlpha = it.occupied ? 0.92 : 0.55;
       ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = active ? '#1e3a8a' : '#1d4ed8';
+      ctx.strokeStyle = active ? "#1e3a8a" : "#1d4ed8";
       ctx.lineWidth = active ? 2 : 1;
       ctx.strokeRect(r.x, r.y, r.w, r.h);
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '12px sans-serif';
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "12px sans-serif";
       ctx.fillText(it.name, r.x + 6, r.y + 16);
 
       const hs = 8;
-      ctx.fillStyle = '#111827';
+      ctx.fillStyle = "#111827";
       ctx.fillRect(r.x + r.w - hs, r.y + r.h - hs, hs, hs);
     }
   }
@@ -317,14 +339,20 @@ class BayLayoutApp {
   constructor(root) {
     this.root = root;
     this.deviceId = root.dataset.deviceId;
-    this.statusEl = document.getElementById('iff-status');
-    this.snapEl = document.getElementById('iff-snap');
-    this.overlapEl = document.getElementById('iff-overlap');
-    this.moduleSelectedEl = document.getElementById('iff-module-selected');
-    this.deviceSelectedEl = document.getElementById('iff-device-selected');
+    this.statusEl = document.getElementById("iff-status");
+    this.snapEl = document.getElementById("iff-snap");
+    this.overlapEl = document.getElementById("iff-overlap");
+    this.moduleSelectedEl = document.getElementById("iff-module-selected");
+    this.deviceSelectedEl = document.getElementById("iff-device-selected");
 
-    this.moduleEditor = new BayCanvasEditor(document.getElementById('iff-module-canvas'), msg => this._setStatus(msg));
-    this.deviceEditor = new BayCanvasEditor(document.getElementById('iff-device-canvas'), msg => this._setStatus(msg));
+    this.moduleEditor = new BayCanvasEditor(
+      document.getElementById("iff-module-canvas"),
+      (msg) => this._setStatus(msg),
+    );
+    this.deviceEditor = new BayCanvasEditor(
+      document.getElementById("iff-device-canvas"),
+      (msg) => this._setStatus(msg),
+    );
     this.activeEditor = null;
 
     this._wire();
@@ -332,44 +360,60 @@ class BayLayoutApp {
   }
 
   _wire() {
-    document.getElementById('iff-auto-module').addEventListener('click', () => this.moduleEditor.autoArrange());
-    document.getElementById('iff-auto-device').addEventListener('click', () => this.deviceEditor.autoArrange());
-    document.getElementById('iff-center-module').addEventListener('click', () => {
-      this.moduleEditor.centerActive();
-      this._setStatus('Centered selected module bay');
-    });
-    document.getElementById('iff-center-device').addEventListener('click', () => {
-      this.deviceEditor.centerActive();
-      this._setStatus('Centered selected device bay');
-    });
-    document.getElementById('iff-save').addEventListener('click', () => this.save());
-    document.getElementById('iff-reset').addEventListener('click', () => this.load());
+    document
+      .getElementById("iff-auto-module")
+      .addEventListener("click", () => this.moduleEditor.autoArrange());
+    document
+      .getElementById("iff-auto-device")
+      .addEventListener("click", () => this.deviceEditor.autoArrange());
+    document
+      .getElementById("iff-center-module")
+      .addEventListener("click", () => {
+        this.moduleEditor.centerActive();
+        this._setStatus("Centered selected module bay");
+      });
+    document
+      .getElementById("iff-center-device")
+      .addEventListener("click", () => {
+        this.deviceEditor.centerActive();
+        this._setStatus("Centered selected device bay");
+      });
+    document
+      .getElementById("iff-save")
+      .addEventListener("click", () => this.save());
+    document
+      .getElementById("iff-reset")
+      .addEventListener("click", () => this.load());
 
-    this.moduleEditor.setSelectionChangeHandler(item => {
+    this.moduleEditor.setSelectionChangeHandler((item) => {
       this.activeEditor = this.moduleEditor;
-      this.moduleSelectedEl.textContent = item ? `${item.name} (${item.x.toFixed(1)}, ${item.y.toFixed(1)})` : 'None';
+      this.moduleSelectedEl.textContent = item
+        ? `${item.name} (${item.x.toFixed(1)}, ${item.y.toFixed(1)})`
+        : "None";
     });
-    this.deviceEditor.setSelectionChangeHandler(item => {
+    this.deviceEditor.setSelectionChangeHandler((item) => {
       this.activeEditor = this.deviceEditor;
-      this.deviceSelectedEl.textContent = item ? `${item.name} (${item.x.toFixed(1)}, ${item.y.toFixed(1)})` : 'None';
+      this.deviceSelectedEl.textContent = item
+        ? `${item.name} (${item.x.toFixed(1)}, ${item.y.toFixed(1)})`
+        : "None";
     });
 
-    document.addEventListener('keydown', e => {
+    document.addEventListener("keydown", (e) => {
       if (!this.activeEditor) return;
-      const tag = (document.activeElement?.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
 
       const baseStep = e.shiftKey ? 2 : 0.5;
-      if (e.key === 'ArrowLeft') {
+      if (e.key === "ArrowLeft") {
         e.preventDefault();
         this.activeEditor.moveActive(-baseStep, 0);
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === "ArrowRight") {
         e.preventDefault();
         this.activeEditor.moveActive(baseStep, 0);
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === "ArrowUp") {
         e.preventDefault();
         this.activeEditor.moveActive(0, -baseStep);
-      } else if (e.key === 'ArrowDown') {
+      } else if (e.key === "ArrowDown") {
         e.preventDefault();
         this.activeEditor.moveActive(0, baseStep);
       }
@@ -377,72 +421,85 @@ class BayLayoutApp {
       const active = this.activeEditor.getActiveItem();
       if (active) {
         const text = `${active.name} (${active.x.toFixed(1)}, ${active.y.toFixed(1)})`;
-        if (this.activeEditor === this.moduleEditor) this.moduleSelectedEl.textContent = text;
-        if (this.activeEditor === this.deviceEditor) this.deviceSelectedEl.textContent = text;
+        if (this.activeEditor === this.moduleEditor)
+          this.moduleSelectedEl.textContent = text;
+        if (this.activeEditor === this.deviceEditor)
+          this.deviceSelectedEl.textContent = text;
       }
     });
 
     const applyOpts = () => {
-      const options = { snap: this.snapEl.checked, preventOverlap: this.overlapEl.checked };
+      const options = {
+        snap: this.snapEl.checked,
+        preventOverlap: this.overlapEl.checked,
+      };
       this.moduleEditor.setOptions(options);
       this.deviceEditor.setOptions(options);
     };
 
-    this.snapEl.addEventListener('change', applyOpts);
-    this.overlapEl.addEventListener('change', applyOpts);
+    this.snapEl.addEventListener("change", applyOpts);
+    this.overlapEl.addEventListener("change", applyOpts);
     applyOpts();
   }
 
   _setStatus(text, isError = false) {
     this.statusEl.textContent = text;
-    this.statusEl.classList.toggle('text-danger', !!isError);
-    this.statusEl.classList.toggle('text-success', !isError && text.toLowerCase().includes('saved'));
+    this.statusEl.classList.toggle("text-danger", !!isError);
+    this.statusEl.classList.toggle(
+      "text-success",
+      !isError && text.toLowerCase().includes("saved"),
+    );
   }
 
   async load() {
-    this._setStatus('Loading...');
+    this._setStatus("Loading...");
     try {
-      const res = await fetch(`/api/plugins/innovace-fibre/devices/${this.deviceId}/bay-layout/`);
+      const res = await fetch(
+        `/api/plugins/innovace-fibre/devices/${this.deviceId}/bay-layout/`,
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       this.moduleEditor.setItems(data.module_bays || []);
       this.deviceEditor.setItems(data.device_bays || []);
       this.activeEditor = this.moduleEditor;
-      this._setStatus('Loaded');
+      this._setStatus("Loaded");
     } catch (err) {
       console.error(err);
-      this._setStatus('Failed to load', true);
+      this._setStatus("Failed to load", true);
     }
   }
 
   async save() {
-    this._setStatus('Saving...');
+    this._setStatus("Saving...");
     try {
-      const res = await fetch(`/api/plugins/innovace-fibre/devices/${this.deviceId}/bay-layout/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCsrfToken(),
+      const res = await fetch(
+        `/api/plugins/innovace-fibre/devices/${this.deviceId}/bay-layout/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrfToken(),
+          },
+          body: JSON.stringify({
+            module_bays: this.moduleEditor.getLayouts(),
+            device_bays: this.deviceEditor.getLayouts(),
+          }),
         },
-        body: JSON.stringify({
-          module_bays: this.moduleEditor.getLayouts(),
-          device_bays: this.deviceEditor.getLayouts(),
-        }),
-      });
+      );
       const data = await res.json();
       if (!res.ok) {
         this._setStatus(data.error || `Save failed (${res.status})`, true);
         return;
       }
-      this._setStatus('Saved ✓');
+      this._setStatus("Saved ✓");
     } catch (err) {
       console.error(err);
-      this._setStatus('Failed to save', true);
+      this._setStatus("Failed to save", true);
     }
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const root = document.getElementById('iff-bay-editor-root');
+document.addEventListener("DOMContentLoaded", () => {
+  const root = document.getElementById("iff-bay-editor-root");
   if (root) new BayLayoutApp(root);
 });
