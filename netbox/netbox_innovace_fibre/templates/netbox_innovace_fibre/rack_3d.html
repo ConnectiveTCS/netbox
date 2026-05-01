@@ -1043,6 +1043,13 @@
           </div>
         </div>
 
+        <div class="r3d-config-section">
+          <span class="r3d-config-label">Rack panels</span>
+          <label class="r3d-checkbox-row">
+            <input type="checkbox" id="cfg-show-doors" checked> Show front / rear doors
+          </label>
+        </div>
+
         <hr class="r3d-config-divider">
 
         <div class="r3d-config-section">
@@ -1199,5 +1206,5 @@
 
 {% block javascript %}
 {{ block.super }}
-<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-bay-overlays-2"></script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-rear-entry-branches-1"></script>
 {% endblock %}

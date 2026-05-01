@@ -15,6 +15,7 @@ const RAIL_H = 0.25;
 const BLANK_DEPTH = 0.5;
 const LABEL_SHOW_DIST = 60;
 const LS_SETTINGS = "iff_rack3d_settings";
+const SS_SESSION_VIEW = "iff_rack3d_session_view";
 
 const DEPTH_MAP = { realistic: 28.0, flat: 4.0, schematic: 1.2 };
 const FRONT_DEVICE_CLEARANCE = 3.5;
@@ -25,6 +26,7 @@ const CABLE_CHANNEL_W = 90 / 25.4;
 // Cable rendering
 const CABLE_PATCH_RADIUS  = 0.18; // scene-inches — intra-rack patch/fibre
 const CABLE_TRUNK_RADIUS  = 0.28; // scene-inches — inter-rack trunk
+const CABLE_TRUNK_MAX_RADIUS = 0.9;
 const CABLE_TUBE_SEGS     = 8;    // radial segments on TubeGeometry
 const CABLE_PATH_SEGS     = 20;   // curve sample points
 const CABLE_OVERHEAD_H    = 6.0;  // scene-inches above rack top for inter-rack overhead run
@@ -121,6 +123,7 @@ class RackScene {
     this._selectedMesh = null;
     this._hoveredRackId = null; // rackId of the rack currently under the cursor
     this._cameraAnim = null; // { fromPos, toPos, fromTarget, toTarget, t }
+    this._onCameraChanged = null;
 
     this._renderer = new THREE.WebGLRenderer({ antialias: true });
     this._renderer.setPixelRatio(window.devicePixelRatio);
@@ -176,6 +179,7 @@ class RackScene {
     this._controls.panSpeed = 2.0; // 1:1 — viewport unit per pixel
     this._controls.rotateSpeed = 0.6; // slightly slower for precision
     this._controls.zoomSpeed = 1.2;
+    this._controls.addEventListener("end", () => this._notifyCameraChanged());
 
     this._raycaster = new THREE.Raycaster();
     this._mouse = new THREE.Vector2();
@@ -240,11 +244,6 @@ class RackScene {
       this._buildRackFrame(rd.rack, settings, zero, group);
       this._buildDevices(rd.devices, rd.rack, settings, zero, group);
       if (settings.showEmpty) this._buildEmptySlots(rd, settings, zero, group);
-      // Cables for this rack — use the group world position as offset
-      // (unrotated racks only; rotated rack cable paths are approximations)
-      const worldOffset = new THREE.Vector3(p.x - cx, 0, p.z - cz);
-      this._buildCablesForLayout(rd.cables || [], rd.devices, rd.rack, settings, worldOffset);
-
       // Rack name label floating above the cabinet
       const rackSc = parseFloat(settings.scale) || 1;
       const rackTop = rd.rack.u_height * U_SCALE_BASE * rackSc + 2.0;
@@ -256,6 +255,8 @@ class RackScene {
       group.add(rackLabel);
       this._labels.push(rackLabel);
     }
+
+    this._buildCablesForLayout(placements, rackDataMap, settings, cx, cz);
 
     this.fitView();
   }
@@ -280,6 +281,7 @@ class RackScene {
     this._camera.lookAt(target);
     this._controls.target.copy(target);
     this._controls.update();
+    this._notifyCameraChanged();
   }
 
   fitView() {
@@ -298,6 +300,41 @@ class RackScene {
     );
     this._camera.lookAt(center);
     this._controls.update();
+    this._notifyCameraChanged();
+  }
+
+  getCameraState() {
+    return {
+      position: {
+        x: this._camera.position.x,
+        y: this._camera.position.y,
+        z: this._camera.position.z,
+      },
+      target: {
+        x: this._controls.target.x,
+        y: this._controls.target.y,
+        z: this._controls.target.z,
+      },
+    };
+  }
+
+  setCameraState(state) {
+    const pos = state?.position;
+    const target = state?.target;
+    if (!pos || !target) return false;
+    const vals = [pos.x, pos.y, pos.z, target.x, target.y, target.z];
+    if (!vals.every((v) => Number.isFinite(v))) return false;
+
+    this._camera.position.set(pos.x, pos.y, pos.z);
+    this._controls.target.set(target.x, target.y, target.z);
+    this._camera.lookAt(this._controls.target);
+    this._controls.update();
+    this._notifyCameraChanged();
+    return true;
+  }
+
+  onCameraChanged(handler) {
+    this._onCameraChanged = typeof handler === "function" ? handler : null;
   }
 
   pickDevice(event) {
@@ -316,6 +353,10 @@ class RackScene {
     this._resizeObserver.disconnect();
     this._clear();
     this._renderer.dispose();
+  }
+
+  _notifyCameraChanged() {
+    if (this._onCameraChanged) this._onCameraChanged(this.getCameraState());
   }
 
   // ── Public: hover / selection / filter ───────────────────────────────────
@@ -707,6 +748,7 @@ class RackScene {
     const totalH = rack.u_height * U_SCALE_BASE * sc;
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
     const colors = themeColors(settings.theme);
+    const showDoors = settings.showDoors !== false;
     const outerW = RACK_WIDTH + POST_W * 2; // 20" — standard device-zone width
     // Total shell width expands to include cable routing channels on each side
     const totalW = outerW + 2 * CABLE_CHANNEL_W;
@@ -752,6 +794,9 @@ class RackScene {
       m.userData.rackId = rack.id;
       m.userData.isRackFrame = true;
       m.userData.rackTransparencyGroup = transparencyGroup;
+      if (transparencyGroup === "door-panel" && !showDoors) {
+        m.visible = false;
+      }
       this._rackFrameMeshes.push(m);
       return m;
     };
@@ -1452,33 +1497,37 @@ class RackScene {
     if (s.cableSettings) this._cableManager.applySettings(s.cableSettings);
   }
 
-  _buildCablesForLayout(cables, devices, rack, settings, worldOffset) {
-    const dwMap = this._buildDeviceWorldMap(devices, rack, settings, worldOffset);
+  _buildCablesForLayout(placements, rackDataMap, settings, cx, cz) {
+    const dwMap = new Map();
     const rwMap = new Map();
-    rwMap.set(rack.id, {
-      offsetX: worldOffset.x,
-      topY:    worldOffset.y + rack.u_height * U_SCALE_BASE * (parseFloat(settings.scale) || 1),
-      inter_rack_exit_side: rack.inter_rack_exit_side || 'right',
-    });
-    // Build incrementally — CableManager.build() would overwrite; call internal method
-    const router = new CablePathRouter(dwMap, rwMap);
-    const s = this._settings;
-    for (const cable of cables) {
-      if (!this._cableManager._shouldRender(cable)) continue;
-      const curve = router.computePath(cable);
-      if (!curve) continue;
-      const isInterRack = this._cableManager._isInterRack(cable);
-      const radius = isInterRack ? CABLE_TRUNK_RADIUS : CABLE_PATCH_RADIUS;
-      const colorHex = cable.color ? parseInt(cable.color, 16) : CABLE_DEFAULT_COLOR;
-      const color = isNaN(colorHex) ? CABLE_DEFAULT_COLOR : colorHex;
-      const geo = new THREE.TubeGeometry(curve, CABLE_PATH_SEGS, radius, CABLE_TUBE_SEGS, false);
-      const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.1, roughness: 0.7 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.userData = { cableId: cable.id, cableData: cable, isCable: true, curve };
-      this._cableManager._group.add(mesh);
-      this._cableManager._entries.push({ mesh, cableData: cable });
-      this._cableMeshes.push(mesh);
+    const cableMap = new Map();
+    const sc = parseFloat(settings.scale) || 1;
+
+    for (const p of placements) {
+      const rd = rackDataMap[p.rackId];
+      if (!rd) continue;
+
+      const worldOffset = new THREE.Vector3(p.x - cx, 0, p.z - cz);
+      const rackDwMap = this._buildDeviceWorldMap(rd.devices, rd.rack, settings, worldOffset);
+      for (const [deviceId, deviceWorld] of rackDwMap.entries()) {
+        dwMap.set(deviceId, deviceWorld);
+      }
+
+      rwMap.set(rd.rack.id, {
+        offsetX: worldOffset.x,
+        topY:    worldOffset.y + rd.rack.u_height * U_SCALE_BASE * sc,
+        centerZ: worldOffset.z,
+        inter_rack_exit_side: rd.rack.inter_rack_exit_side || 'right',
+      });
+
+      for (const cable of rd.cables || []) {
+        cableMap.set(cable.id, cable);
+      }
     }
+
+    this._cableManager.build(Array.from(cableMap.values()), dwMap, rwMap);
+    this._cableMeshes = this._cableManager.getMeshes();
+    const s = this._settings;
     if (s.cableSettings) this._cableManager.applySettings(s.cableSettings);
   }
 
@@ -1501,12 +1550,23 @@ class RackScene {
       } else {
         deviceZ = rearDeviceZ + deviceDepth / 2;
       }
+      const mountFace = dev.face === "rear" ? "rear" : "front";
+      const logicalFrontFaceZ = mountFace === "rear"
+        ? deviceZ - deviceDepth / 2
+        : deviceZ + deviceDepth / 2;
+      const logicalRearFaceZ = mountFace === "rear"
+        ? deviceZ + deviceDepth / 2
+        : deviceZ - deviceDepth / 2;
+
       map.set(dev.id, {
         worldX:       offset.x,
         worldYBot:    offset.y + yBottom,
         worldYTop:    offset.y + yBottom + deviceH,
         frontFaceZ:   deviceZ + deviceDepth / 2,
         rearFaceZ:    deviceZ - deviceDepth / 2,
+        logicalFrontFaceZ,
+        logicalRearFaceZ,
+        mountFace,
         rackCenterZ:  offset.z,
         rackOffsetX:  offset.x,
         cable_exit_side: dev.cable_exit_side || 'left',
@@ -1590,6 +1650,9 @@ class RackScene {
         worldYTop:    geom.offset.y + geom.yBottom + geom.deviceH / 2 + localY + bayH / 2,
         frontFaceZ:   faceZ,
         rearFaceZ:    faceZ,
+        logicalFrontFaceZ: faceZ,
+        logicalRearFaceZ:  faceZ,
+        mountFace:    bay.installed_device_face === "rear" ? "rear" : mountSide,
         rackCenterZ:  geom.offset.z,
         rackOffsetX:  geom.offset.x,
         cable_exit_side: bay.installed_device_cable_exit_side || dev.cable_exit_side || 'left',
@@ -1701,31 +1764,100 @@ class CablePathRouter {
     const bDev = this._dw.get(bT.device_id);
     if (!aDev || !bDev) return null;
 
-    const aPos = this._portWorldPos(aDev, aT.port_name, aT.port_type);
-    const bPos = this._portWorldPos(bDev, bT.port_name, bT.port_type);
+    const aEnd = this._portEndpoint(aDev, aT.port_name, aT.port_type);
+    const bEnd = this._portEndpoint(bDev, bT.port_name, bT.port_type);
+    const aPos = aEnd.pos;
+    const bPos = bEnd.pos;
 
     const sameRack = aT.rack_id !== null && aT.rack_id === bT.rack_id;
     if (sameRack) {
-      return this._intraRackPath(aPos, bPos, aDev, bDev);
+      return this._intraRackPath(aEnd, bEnd, aDev, bDev);
     }
     const aRack = this._rw.get(aT.rack_id);
     const bRack = this._rw.get(bT.rack_id);
     if (!aRack || !bRack) {
       return new THREE.CatmullRomCurve3([aPos, bPos]);
     }
-    return this._interRackPath(aPos, bPos, aDev, bDev, aRack, bRack);
+    return this._interRackPath(aEnd, bEnd, aDev, bDev, aRack, bRack);
   }
 
-  _portWorldPos(dw, portName, portType) {
+  computeTrunkBundlePaths(bundle) {
+    const branchSpecs = [];
+    const aBreakouts = [];
+    const bBreakouts = [];
+    const pairs = Math.min(
+      bundle.a_terminations?.length || 0,
+      bundle.b_terminations?.length || 0,
+    );
+
+    for (let i = 0; i < pairs; i++) {
+      const aT = bundle.a_terminations[i];
+      const bT = bundle.b_terminations[i];
+      const aDev = this._dw.get(aT.device_id);
+      const bDev = this._dw.get(bT.device_id);
+      if (!aDev || !bDev) continue;
+
+      const aEnd = this._portEndpoint(aDev, aT.port_name, aT.port_type);
+      const bEnd = this._portEndpoint(bDev, bT.port_name, bT.port_type);
+      const aBreakout = this._rearBreakoutPoint(aDev, aEnd.pos);
+      const bBreakout = this._rearBreakoutPoint(bDev, bEnd.pos);
+
+      aBreakouts.push(aBreakout);
+      bBreakouts.push(bBreakout);
+      branchSpecs.push({ end: aEnd, dev: aDev, breakout: aBreakout });
+      branchSpecs.push({ end: bEnd, dev: bDev, breakout: bBreakout });
+    }
+
+    if (!aBreakouts.length || !bBreakouts.length) return null;
+
+    const aAnchor = this._averagePoint(aBreakouts);
+    const bAnchor = this._averagePoint(bBreakouts);
+    const aRack = this._rw.get(bundle.a_terminations[0]?.rack_id);
+    const bRack = this._rw.get(bundle.b_terminations[0]?.rack_id);
+    if (!aRack || !bRack) return null;
+
+    const trunk = this._rearTrunkPath(aAnchor, bAnchor, aRack, bRack);
+    const branches = branchSpecs
+      .map(({ end, dev, breakout }) => this._branchToRearAnchor(end, dev, breakout))
+      .filter(Boolean);
+
+    // Add fan-in/fan-out from each per-cable breakout to the shared trunk anchor.
+    const anchorBranches = [
+      ...aBreakouts.map((p) => this._breakoutToAnchorPath(p, aAnchor)),
+      ...bBreakouts.map((p) => this._breakoutToAnchorPath(p, bAnchor)),
+    ].filter(Boolean);
+
+    return { trunk, branches: [...branches, ...anchorBranches] };
+  }
+
+  _portEndpoint(dw, portName, portType) {
     const pos = dw.port_positions?.[portName];
+    const logicalFace = this._logicalPortFace(pos, portType);
+    const face = this._physicalPortFace(dw, logicalFace);
     if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
       const x = dw.worldX + (pos.x - 0.5) * dw.deviceW;
       const y = dw.worldYBot + (1 - pos.y) * (dw.worldYTop - dw.worldYBot);
-      const z = pos.face === 'rear' ? dw.rearFaceZ : dw.frontFaceZ;
-      return new THREE.Vector3(x, y, z);
+      const z = this._logicalFaceZ(dw, logicalFace);
+      return { pos: new THREE.Vector3(x, y, z), face };
     }
-    const faceZ = portType === 'rearport' ? dw.rearFaceZ : dw.frontFaceZ;
-    return new THREE.Vector3(dw.worldX, (dw.worldYBot + dw.worldYTop) / 2, faceZ);
+    const faceZ = this._logicalFaceZ(dw, logicalFace);
+    return { pos: new THREE.Vector3(dw.worldX, (dw.worldYBot + dw.worldYTop) / 2, faceZ), face };
+  }
+
+  _logicalPortFace(pos, portType) {
+    if (portType === 'rearport') return 'rear';
+    if (portType === 'frontport' || portType === 'interface') return 'front';
+    return pos?.face === 'rear' ? 'rear' : 'front';
+  }
+
+  _physicalPortFace(dw, logicalFace) {
+    if (dw.mountFace !== 'rear') return logicalFace;
+    return logicalFace === 'rear' ? 'front' : 'rear';
+  }
+
+  _logicalFaceZ(dw, logicalFace) {
+    if (logicalFace === 'rear') return dw.logicalRearFaceZ ?? dw.rearFaceZ;
+    return dw.logicalFrontFaceZ ?? dw.frontFaceZ;
   }
 
   _channelX(dw, portWorldX) {
@@ -1740,37 +1872,138 @@ class CablePathRouter {
     return dw.rackOffsetX - off;
   }
 
-  _intraRackPath(aPos, bPos, aDev, bDev) {
+  _routePlaneZ(dw, face) {
+    return face === 'rear' ? dw.rearFaceZ - 0.65 : dw.frontFaceZ + 0.65;
+  }
+
+  _rearBreakoutPoint(dw, portPos) {
+    return new THREE.Vector3(
+      this._channelX(dw, portPos.x),
+      portPos.y,
+      this._routePlaneZ(dw, 'rear'),
+    );
+  }
+
+  _averagePoint(points) {
+    const out = new THREE.Vector3(0, 0, 0);
+    for (const p of points) out.add(p);
+    return out.multiplyScalar(1 / points.length);
+  }
+
+  _branchToRearAnchor(end, dev, breakout) {
+    const port = end.pos;
+    const portRouteZ = this._routePlaneZ(dev, end.face);
+    const pts = [port.clone()];
+
+    if (Math.abs(port.z - portRouteZ) > 0.01) {
+      pts.push(new THREE.Vector3(port.x, port.y, portRouteZ));
+    }
+
+    pts.push(new THREE.Vector3(breakout.x, port.y, portRouteZ));
+
+    if (Math.abs(portRouteZ - breakout.z) > 0.01) {
+      pts.push(new THREE.Vector3(breakout.x, port.y, breakout.z));
+    }
+
+    pts.push(breakout.clone());
+    return this._curveFromPoints(pts);
+  }
+
+  _breakoutToAnchorPath(breakout, anchor) {
+    if (breakout.distanceTo(anchor) < 0.01) return null;
+    return this._curveFromPoints([
+      breakout.clone(),
+      new THREE.Vector3(breakout.x, anchor.y, breakout.z),
+      anchor.clone(),
+    ]);
+  }
+
+  _rearTrunkPath(aAnchor, bAnchor, aRack, bRack) {
+    const overheadY = Math.max(aRack.topY, bRack.topY) + CABLE_OVERHEAD_H;
+    const midZ = (aAnchor.z + bAnchor.z) / 2;
+    const pts = [
+      aAnchor.clone(),
+      new THREE.Vector3(aAnchor.x, overheadY, aAnchor.z),
+      new THREE.Vector3(aAnchor.x, overheadY, midZ),
+      new THREE.Vector3(bAnchor.x, overheadY, bAnchor.z),
+      new THREE.Vector3(bAnchor.x, bAnchor.y, bAnchor.z),
+      bAnchor.clone(),
+    ];
+    return this._curveFromPoints(pts);
+  }
+
+  _curveFromPoints(points) {
+    const distinct = [];
+    for (const point of points) {
+      if (!distinct.length || distinct[distinct.length - 1].distanceTo(point) > 0.01) {
+        distinct.push(point);
+      }
+    }
+    if (distinct.length < 2) return null;
+    return new THREE.CatmullRomCurve3(distinct, false, 'catmullrom', 0.5);
+  }
+
+  _intraRackPath(aEnd, bEnd, aDev, bDev) {
+    const aPos = aEnd.pos;
+    const bPos = bEnd.pos;
     const aChX  = this._channelX(aDev, aPos.x);
     const bChX  = this._channelX(bDev, bPos.x);
-    const chZ   = Math.max(aDev.frontFaceZ, bDev.frontFaceZ) + 0.65;
     const midY  = (aPos.y + bPos.y) / 2;
+
+    if (aEnd.face === bEnd.face) {
+      const chZ = aEnd.face === 'rear'
+        ? Math.min(aDev.rearFaceZ, bDev.rearFaceZ) - 0.65
+        : Math.max(aDev.frontFaceZ, bDev.frontFaceZ) + 0.65;
+      const pts = [
+        aPos.clone(),
+        new THREE.Vector3(aPos.x, aPos.y, chZ),
+        new THREE.Vector3(aChX,   aPos.y, chZ),
+        new THREE.Vector3(aChX,   midY,   chZ),
+        new THREE.Vector3(bChX,   bPos.y, chZ),
+        new THREE.Vector3(bPos.x, bPos.y, chZ),
+        bPos.clone(),
+      ];
+      return new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
+    }
+
+    const aRouteZ = this._routePlaneZ(aDev, aEnd.face);
+    const bRouteZ = this._routePlaneZ(bDev, bEnd.face);
     const pts = [
       aPos.clone(),
-      new THREE.Vector3(aPos.x, aPos.y, chZ),
-      new THREE.Vector3(aChX,   aPos.y, chZ),
-      new THREE.Vector3(aChX,   midY,   chZ),
-      new THREE.Vector3(bChX,   bPos.y, chZ),
-      new THREE.Vector3(bPos.x, bPos.y, chZ),
+      new THREE.Vector3(aPos.x, aPos.y, aRouteZ),
+      new THREE.Vector3(aChX,   aPos.y, aRouteZ),
+      new THREE.Vector3(aChX,   midY,   aRouteZ),
+      new THREE.Vector3(aChX,   midY,   bRouteZ),
+      new THREE.Vector3(bChX,   midY,   bRouteZ),
+      new THREE.Vector3(bChX,   bPos.y, bRouteZ),
+      new THREE.Vector3(bPos.x, bPos.y, bRouteZ),
       bPos.clone(),
     ];
     return new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
   }
 
-  _interRackPath(aPos, bPos, aDev, bDev, aRack, bRack) {
+  _interRackPath(aEnd, bEnd, aDev, bDev, aRack, bRack) {
+    const aPos = aEnd.pos;
+    const bPos = bEnd.pos;
     const overheadY = Math.max(aRack.topY, bRack.topY) + CABLE_OVERHEAD_H;
     const aChX = this._channelX(aDev, aPos.x);
     const bChX = this._channelX(bDev, bPos.x);
+    const aRouteZ = this._routePlaneZ(aDev, aEnd.face);
+    const bRouteZ = this._routePlaneZ(bDev, bEnd.face);
     const aChZ = aDev.rackCenterZ;
     const bChZ = bDev.rackCenterZ;
     const midZ = (aChZ + bChZ) / 2;
     const pts = [
       aPos.clone(),
+      new THREE.Vector3(aPos.x, aPos.y, aRouteZ),
+      new THREE.Vector3(aChX,   aPos.y, aRouteZ),
       new THREE.Vector3(aChX, aPos.y,    aChZ),
       new THREE.Vector3(aChX, overheadY, aChZ),
       new THREE.Vector3(aChX, overheadY, midZ),
       new THREE.Vector3(bChX, overheadY, bChZ),
       new THREE.Vector3(bChX, bPos.y,    bChZ),
+      new THREE.Vector3(bChX, bPos.y,    bRouteZ),
+      new THREE.Vector3(bPos.x, bPos.y,  bRouteZ),
       bPos.clone(),
     ];
     return new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
@@ -1797,6 +2030,9 @@ class CableManager {
     const debug = {
       input: cables?.length || 0,
       built: 0,
+      bundles: 0,
+      trunkBackbones: 0,
+      trunkBranches: 0,
       hiddenBySettings: 0,
       missingRoute: 0,
       deviceIds: Array.from(deviceWorldMap.keys()),
@@ -1807,31 +2043,47 @@ class CableManager {
       return;
     }
     const router = new CablePathRouter(deviceWorldMap, rackWorldMap);
-    for (const cable of cables) {
+    const renderables = this._buildRenderables(cables);
+    debug.bundles = renderables.filter((c) => c.is_trunk_bundle).length;
+
+    for (const cable of renderables) {
       if (!this._shouldRender(cable)) {
         debug.hiddenBySettings += 1;
         continue;
       }
+
+      if (cable.is_trunk_bundle) {
+        const paths = router.computeTrunkBundlePaths(cable);
+        if (!paths?.trunk) {
+          debug.missingRoute += 1;
+          continue;
+        }
+
+        const trunkMesh = this._makeCableMesh(cable, paths.trunk, this._radiusForCable(cable));
+        trunkMesh.userData.isTrunkBackbone = true;
+        this._group.add(trunkMesh);
+        this._entries.push({ mesh: trunkMesh, cableData: cable });
+        debug.built += 1;
+        debug.trunkBackbones += 1;
+
+        for (const branchCurve of paths.branches || []) {
+          const branchMesh = this._makeCableMesh(cable, branchCurve, CABLE_PATCH_RADIUS * 0.72);
+          branchMesh.userData.isTrunkBranch = true;
+          this._group.add(branchMesh);
+          this._entries.push({ mesh: branchMesh, cableData: cable });
+          debug.built += 1;
+          debug.trunkBranches += 1;
+        }
+        continue;
+      }
+
       const curve = router.computePath(cable);
       if (!curve) {
         debug.missingRoute += 1;
         continue;
       }
 
-      const isInterRack = this._isInterRack(cable);
-      const radius = isInterRack ? CABLE_TRUNK_RADIUS : CABLE_PATCH_RADIUS;
-      const colorHex = cable.color ? parseInt(cable.color, 16) : CABLE_DEFAULT_COLOR;
-      const color = isNaN(colorHex) ? CABLE_DEFAULT_COLOR : colorHex;
-
-      const geo = new THREE.TubeGeometry(curve, CABLE_PATH_SEGS, radius, CABLE_TUBE_SEGS, false);
-      const mat = new THREE.MeshStandardMaterial({
-        color, metalness: 0.1, roughness: 0.7,
-        transparent: this._settings.opacity < 1,
-        opacity: this._settings.opacity,
-      });
-
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.userData = { cableId: cable.id, cableData: cable, isCable: true, curve };
+      const mesh = this._makeCableMesh(cable, curve, this._radiusForCable(cable));
       this._group.add(mesh);
       this._entries.push({ mesh, cableData: cable });
       debug.built += 1;
@@ -1860,6 +2112,89 @@ class CableManager {
 
   getMeshes() {
     return this._entries.map(e => e.mesh);
+  }
+
+  _makeCableMesh(cable, curve, radius) {
+    const colorHex = cable.color ? parseInt(cable.color, 16) : CABLE_DEFAULT_COLOR;
+    const color = isNaN(colorHex) ? CABLE_DEFAULT_COLOR : colorHex;
+    const geo = new THREE.TubeGeometry(curve, CABLE_PATH_SEGS, radius, CABLE_TUBE_SEGS, false);
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0.1,
+      roughness: 0.7,
+      transparent: this._settings.opacity < 1,
+      opacity: this._settings.opacity,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData = { cableId: cable.id, cableData: cable, isCable: true, curve };
+    return mesh;
+  }
+
+  _buildRenderables(cables) {
+    const regular = [];
+    const bundles = new Map();
+
+    for (const cable of cables || []) {
+      if (!this._isInterRack(cable)) {
+        regular.push(cable);
+        continue;
+      }
+
+      const racks = this._cableRackIds(cable);
+      if (racks.length < 2) {
+        regular.push(cable);
+        continue;
+      }
+
+      const group = this._trunkGroup(cable);
+      const key = `${racks[0]}:${racks[1]}:${group}`;
+      if (!bundles.has(key)) {
+        bundles.set(key, {
+          id: `trunk:${key}`,
+          label: `Trunk ${racks[0]} ⇄ ${racks[1]}${group === "default" ? "" : ` / ${group}`}`,
+          color: cable.color || '',
+          type: 'trunk',
+          trunk_group: group,
+          is_trunk_bundle: true,
+          bundled_count: 0,
+          bundled_cable_ids: [],
+          a_terminations: [],
+          b_terminations: [],
+        });
+      }
+
+      const bundle = bundles.get(key);
+      const terms = [...(cable.a_terminations || []), ...(cable.b_terminations || [])];
+      const aTerm = terms.find((t) => String(t.rack_id) === racks[0]);
+      const bTerm = terms.find((t) => String(t.rack_id) === racks[1]);
+      if (!aTerm || !bTerm) continue;
+
+      bundle.bundled_count += 1;
+      bundle.bundled_cable_ids.push(cable.id);
+      bundle.a_terminations.push(aTerm);
+      bundle.b_terminations.push(bTerm);
+      if (!bundle.color && cable.color) bundle.color = cable.color;
+    }
+
+    return [...regular, ...bundles.values()];
+  }
+
+  _radiusForCable(cable) {
+    if (!cable?.is_trunk_bundle) {
+      return this._isInterRack(cable) ? CABLE_TRUNK_RADIUS : CABLE_PATCH_RADIUS;
+    }
+    const count = Math.max(1, cable.bundled_count || 1);
+    return Math.min(CABLE_TRUNK_MAX_RADIUS, CABLE_TRUNK_RADIUS + Math.sqrt(count) * 0.08);
+  }
+
+  _trunkGroup(cable) {
+    return String(
+      cable.trunk_group ||
+      cable.bundle_group ||
+      cable.cable_trunk_group ||
+      cable.iff_trunk_group ||
+      'default',
+    ).trim() || 'default';
   }
 
   applySettings({ showPatch, showNetwork, showPower, opacity }) {
@@ -1891,32 +2226,42 @@ class CableManager {
 
   hoverCable(mesh) {
     if (this._hoveredMesh === mesh) return;
-    if (this._hoveredMesh && this._hoveredMesh !== this._selectedMesh) {
-      this._hoveredMesh.material.emissive?.set(0x000000);
-      this._hoveredMesh.material.emissiveIntensity = 0;
+    if (this._hoveredMesh && !this._sameCableMesh(this._hoveredMesh, this._selectedMesh)) {
+      this._setCableEmissive(this._hoveredMesh, 0x000000, 0);
     }
     this._hoveredMesh = mesh;
-    if (mesh && mesh !== this._selectedMesh) {
-      mesh.material.emissive = new THREE.Color(0x003060);
-      mesh.material.emissiveIntensity = 0.7;
+    if (mesh && !this._sameCableMesh(mesh, this._selectedMesh)) {
+      this._setCableEmissive(mesh, 0x003060, 0.7);
     }
   }
 
   selectCable(mesh) {
-    if (this._selectedMesh && this._selectedMesh !== mesh) {
-      this._selectedMesh.material.emissive?.set(0x000000);
-      this._selectedMesh.material.emissiveIntensity = 0;
+    if (this._selectedMesh && !this._sameCableMesh(this._selectedMesh, mesh)) {
+      this._setCableEmissive(this._selectedMesh, 0x000000, 0);
     }
     this._selectedMesh = mesh;
     if (mesh) {
-      mesh.material.emissive = new THREE.Color(0x0050c0);
-      mesh.material.emissiveIntensity = 1.0;
+      this._setCableEmissive(mesh, 0x0050c0, 1.0);
     }
     return mesh?.userData.cableData ?? null;
   }
 
   clearCableSelection() {
     this.selectCable(null);
+  }
+
+  _setCableEmissive(mesh, color, intensity) {
+    const cableId = mesh?.userData?.cableId;
+    const colorObj = new THREE.Color(color);
+    for (const { mesh: candidate } of this._entries) {
+      if (candidate.userData?.cableId !== cableId) continue;
+      candidate.material.emissive = colorObj;
+      candidate.material.emissiveIntensity = intensity;
+    }
+  }
+
+  _sameCableMesh(a, b) {
+    return !!a && !!b && a.userData?.cableId === b.userData?.cableId;
   }
 
   _shouldRender(cable) {
@@ -1928,11 +2273,16 @@ class CableManager {
   }
 
   _isInterRack(cable) {
-    const racks = new Set(
+    return this._cableRackIds(cable).length > 1;
+  }
+
+  _cableRackIds(cable) {
+    return Array.from(new Set(
       [...(cable.a_terminations || []), ...(cable.b_terminations || [])]
-        .map(t => t.rack_id).filter(Boolean),
-    );
-    return racks.size > 1;
+        .map(t => t.rack_id)
+        .filter((id) => id !== null && id !== undefined)
+        .map(String),
+    )).sort();
   }
 
   _connectedTo(cable, deviceIdSet) {
@@ -2430,12 +2780,15 @@ class AppController {
     this._currentData = null; // single-rack mode
     this._layoutMode = false;
     this._ctxCableData = null;
+    this._sessionLoadState = this._restoreSessionState();
+    this._sessionSaveTimer = null;
 
     /** @type {FloorCanvas|null} */
     this._canvas = null;
 
     this._restoreSettings();
     this._scene = new RackScene(this._viewport);
+    this._scene.onCameraChanged(() => this._queueSessionSave());
     this._wireEvents();
     this._loadSitesAndRacks();
     this._initBarcodeScanner();
@@ -2472,6 +2825,10 @@ class AppController {
         document
           .querySelector(`input[name="hover-transparency"][value="${s.hoverTransparency}"]`)
           ?.click();
+      if (s.showDoors !== undefined) {
+        const el = document.getElementById("cfg-show-doors");
+        if (el) el.checked = s.showDoors;
+      }
       if (s.railFL) document.getElementById("cfg-rail-fl").value = s.railFL;
       if (s.railFR) document.getElementById("cfg-rail-fr").value = s.railFR;
       if (s.railRL) document.getElementById("cfg-rail-rl").value = s.railRL;
@@ -2508,6 +2865,7 @@ class AppController {
         colorby: s.colorBy,
         empty: s.showEmpty ? "yes" : "no",
         hoverTransparency: s.hoverTransparency,
+        showDoors: s.showDoors,
         railFL: s.railFL,
         railFR: s.railFR,
         railRL: s.railRL,
@@ -2520,6 +2878,41 @@ class AppController {
     );
   }
 
+  _restoreSessionState() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SS_SESSION_VIEW) || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+
+  _queueSessionSave() {
+    clearTimeout(this._sessionSaveTimer);
+    this._sessionSaveTimer = setTimeout(() => this._saveSessionState(), 150);
+  }
+
+  _saveSessionState() {
+    try {
+      const state = {
+        siteId: this._siteSel?.value || "",
+        rackId: this._layoutMode ? "" : this._rackSel?.value || "",
+        layoutMode: !!this._layoutMode,
+        camera: this._scene?.getCameraState?.() || null,
+      };
+      sessionStorage.setItem(SS_SESSION_VIEW, JSON.stringify(state));
+    } catch (_) {}
+  }
+
+  _restoreCameraFromSession() {
+    const camera = this._sessionLoadState?.camera;
+    if (!camera) return;
+    const restored = this._scene.setCameraState(camera);
+    if (restored) {
+      // Restore camera only once per page load.
+      delete this._sessionLoadState.camera;
+    }
+  }
+
   // ── Event wiring ──────────────────────────────────────────────────────────
 
   _wireEvents() {
@@ -2528,6 +2921,7 @@ class AppController {
       this._updateRackDropdown();
       const siteId = this._siteSel.value;
       if (siteId) this._autoLoadFloorPlan(siteId);
+      this._queueSessionSave();
     });
     this._rackSel.addEventListener("change", () => {
       const id = this._rackSel.value;
@@ -2535,6 +2929,7 @@ class AppController {
         this._layoutMode = false;
         this._loadRack(id);
       }
+      this._queueSessionSave();
     });
 
     // Face toggle
@@ -2553,10 +2948,14 @@ class AppController {
       if (this._currentData)
         this._scene.resetCamera(this._currentData.rack, this._settings());
       else this._scene.fitView();
+      this._queueSessionSave();
     });
     document
       .getElementById("btn-fit-rack")
-      .addEventListener("click", () => this._scene.fitView());
+      .addEventListener("click", () => {
+        this._scene.fitView();
+        this._queueSessionSave();
+      });
 
     // Config panel
     document
@@ -2589,6 +2988,11 @@ class AppController {
     document
       .getElementById("btn-theme-toggle")
       .addEventListener("click", () => this._toggleTheme());
+
+    window.addEventListener("pagehide", () => this._saveSessionState());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") this._saveSessionState();
+    });
 
     // Layout panel open
     document
@@ -2774,13 +3178,41 @@ class AppController {
 
       this._updateRackDropdown();
 
-      // Auto-load floor plan for the first site if present
-      const firstSite = (data.sites || [])[0];
-      if (firstSite) {
-        this._siteSel.value = firstSite.id;
+      const savedSiteId = String(this._sessionLoadState?.siteId || "");
+      const savedRackId = String(this._sessionLoadState?.rackId || "");
+      const savedLayoutMode = !!this._sessionLoadState?.layoutMode;
+
+      if (
+        savedSiteId &&
+        this._siteSel.querySelector(`option[value="${savedSiteId}"]`)
+      ) {
+        this._siteSel.value = savedSiteId;
         this._updateRackDropdown();
-        await this._autoLoadFloorPlan(firstSite.id);
       }
+
+      if (savedLayoutMode && this._siteSel.value) {
+        await this._autoLoadFloorPlan(this._siteSel.value);
+      }
+
+      if (
+        savedRackId &&
+        this._rackSel.querySelector(`option[value="${savedRackId}"]`)
+      ) {
+        this._rackSel.value = savedRackId;
+        this._layoutMode = false;
+        await this._loadRack(savedRackId);
+      } else {
+        // Auto-load floor plan for the selected/first site when no saved rack is available.
+        const selectedOrFirstSite =
+          this._siteSel.value || String((data.sites || [])[0]?.id || "");
+        if (selectedOrFirstSite) {
+          this._siteSel.value = selectedOrFirstSite;
+          this._updateRackDropdown();
+          await this._autoLoadFloorPlan(selectedOrFirstSite);
+        }
+      }
+
+      this._queueSessionSave();
     } catch (e) {
       console.error("Failed to load rack list:", e);
     }
@@ -2804,7 +3236,9 @@ class AppController {
     if (this._loadedRacks[rackId]) {
       this._currentData = this._loadedRacks[rackId];
       this._scene.load(this._currentData, this._settings());
+      this._restoreCameraFromSession();
       this._showLoading(false);
+      this._queueSessionSave();
       return;
     }
     const id = ++this._loadId;
@@ -2819,7 +3253,9 @@ class AppController {
       this._loadedRacks[rackId] = data;
       this._currentData = data;
       this._scene.load(data, this._settings());
+      this._restoreCameraFromSession();
       this._showLoading(false);
+      this._queueSessionSave();
     } catch (e) {
       console.error("Rack 3D data load failed:", e);
       this._showLoading(false);
@@ -2886,6 +3322,8 @@ class AppController {
         floorWidth: cfg.floor?.width || 400,
         floorDepth: cfg.floor?.depth || 300,
       });
+      this._restoreCameraFromSession();
+      this._queueSessionSave();
     } catch (e) {
       console.error("Auto-load floor plan failed:", e);
     }
@@ -2989,6 +3427,7 @@ class AppController {
       floorWidth: floor.width,
       floorDepth: floor.depth,
     });
+    this._queueSessionSave();
   }
 
   async _loadCanvasFromServer(siteId) {
@@ -3093,6 +3532,7 @@ class AppController {
     this._rebuildScene();
     this._updateThemeBtn();
     this._saveSettings();
+    this._queueSessionSave();
     // Re-render canvas if open
     this._canvas?.render();
   }
@@ -3107,6 +3547,7 @@ class AppController {
   // ── Scene rebuild ─────────────────────────────────────────────────────────
 
   _rebuildScene() {
+    const cameraState = this._scene.getCameraState();
     if (this._layoutMode && this._canvas) {
       const placements = this._canvas.getPlacements();
       if (placements.length) {
@@ -3125,6 +3566,8 @@ class AppController {
     } else if (this._currentData) {
       this._scene.load(this._currentData, this._settings());
     }
+    this._scene.setCameraState(cameraState);
+    this._queueSessionSave();
   }
 
   // ── Settings snapshot ─────────────────────────────────────────────────────
@@ -3153,6 +3596,7 @@ class AppController {
         document.querySelector('input[name="empty"]:checked')?.value === "yes",
       hoverTransparency:
         document.querySelector('input[name="hover-transparency"]:checked')?.value || "doors",
+      showDoors: document.getElementById("cfg-show-doors")?.checked ?? true,
       face:
         document.querySelector(".r3d-face-btn.active")?.dataset.face || "both",
       railFL: parseFloat(document.getElementById("cfg-rail-fl")?.value) || 2,
@@ -3274,15 +3718,27 @@ class AppController {
       ? `<span style="display:inline-block;width:12px;height:12px;background:#${cable.color};border-radius:2px;margin-right:4px;vertical-align:middle"></span>`
       : "";
     this._infoTitle.textContent = cable.label || `Cable #${cable.id}`;
+    const bundleRows = cable.is_trunk_bundle
+      ? `
+        <div class="r3d-info-row"><span class="r3d-info-lbl">Bundled cables</span><span class="r3d-info-val">${cable.bundled_count || 0}</span></div>
+        <div class="r3d-info-row"><span class="r3d-info-lbl">Bundle group</span><span class="r3d-info-val">${cable.trunk_group || "default"}</span></div>
+      `
+      : "";
+    const actions = cable.is_trunk_bundle
+      ? ""
+      : `
+        <div class="r3d-info-actions">
+          <a href="/dcim/cables/${cable.id}/" target="_blank" class="r3d-info-btn">Open in NetBox</a>
+          <button class="r3d-info-btn r3d-info-btn-accent" id="btn-trace-cable">Trace Signal</button>
+        </div>
+      `;
     this._infoBody.innerHTML = `
       <div class="r3d-info-row"><span class="r3d-info-lbl">Type</span><span class="r3d-info-val">${cable.type || "—"}</span></div>
       <div class="r3d-info-row"><span class="r3d-info-lbl">Color</span><span class="r3d-info-val">${colorSwatch}${cable.color ? "#" + cable.color : "—"}</span></div>
+      ${bundleRows}
       <div class="r3d-info-row"><span class="r3d-info-lbl">End A</span><span class="r3d-info-val">${aTerms}</span></div>
       <div class="r3d-info-row"><span class="r3d-info-lbl">End B</span><span class="r3d-info-val">${bTerms}</span></div>
-      <div class="r3d-info-actions">
-        <a href="/dcim/cables/${cable.id}/" target="_blank" class="r3d-info-btn">Open in NetBox</a>
-        <button class="r3d-info-btn r3d-info-btn-accent" id="btn-trace-cable">Trace Signal</button>
-      </div>
+      ${actions}
     `;
     this._infoPanel.classList.remove("r3d-info-hidden");
     document.getElementById("btn-trace-cable")?.addEventListener("click", () => {

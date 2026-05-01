@@ -14,6 +14,7 @@ class Command(BaseCommand):
         self._ensure_port_positions()
         self._ensure_cable_exit_side()
         self._ensure_inter_rack_exit_side()
+        self._ensure_cable_trunk_group()
         self._ensure_device_barcode()
         self._ensure_cable_barcode_a()
         self._ensure_cable_barcode_b()
@@ -122,6 +123,27 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS('Created custom field: iff_barcode (Device)'))
         else:
             self.stdout.write('Custom field iff_barcode already exists — skipped.')
+
+    def _ensure_cable_trunk_group(self):
+        ct = ContentType.objects.get(app_label='dcim', model='cable')
+        cf, created = CustomField.objects.get_or_create(
+            name='trunk_group',
+            defaults={
+                'type': CustomFieldTypeChoices.TYPE_TEXT,
+                'label': 'Trunk Group',
+                'description': (
+                    'Optional visual bundle name for inter-rack cables in the Innovace 3D rack view. '
+                    'Cables between the same rack pair with the same group are drawn as one trunk.'
+                ),
+                'required': False,
+                'group_name': 'Innovace Cable Viz',
+            },
+        )
+        if created:
+            cf.object_types.set([ct])
+            self.stdout.write(self.style.SUCCESS('Created custom field: trunk_group (Cable)'))
+        else:
+            self.stdout.write('Custom field trunk_group already exists — skipped.')
 
     def _ensure_cable_barcode_a(self):
         ct = ContentType.objects.get(app_label='dcim', model='cable')

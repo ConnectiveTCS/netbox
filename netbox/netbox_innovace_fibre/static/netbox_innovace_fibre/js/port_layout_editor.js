@@ -8,13 +8,17 @@ const PIN_COLORS = {
   positioned: "#6b7280",
 };
 const API_BASE = "/api/plugins/innovace-fibre";
+const GENERIC_CANVAS_WIDTH = 1200;
+const RACK_WIDTH_IN = 19.0;
+const RACK_U_HEIGHT_IN = 1.75;
 const PORT_NAME_COLLATOR = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
 });
 
-function comparePorts(a, b) {
-  const faceOrder = { front: 0, rear: 1 };
+function comparePorts(a, b, activeFace = "front") {
+  const inactiveFace = activeFace === "rear" ? "front" : "rear";
+  const faceOrder = { [activeFace]: 0, [inactiveFace]: 1 };
   const aFace = faceOrder[a.face] ?? 2;
   const bFace = faceOrder[b.face] ?? 2;
   if (aFace !== bFace) return aFace - bFace;
@@ -40,6 +44,7 @@ class FaceEditor {
     this._selected = null; // portName currently selected for placement
     this._dragging = null; // portName being dragged
     this._dragOff = { x: 0, y: 0 };
+    this._genericUHeight = 1;
 
     canvas.addEventListener("mousedown", (e) => this._onMouseDown(e));
     canvas.addEventListener("mousemove", (e) => this._onMouseMove(e));
@@ -49,6 +54,11 @@ class FaceEditor {
 
   // Load the image and size the canvas to match its intrinsic aspect ratio.
   async loadImage() {
+    if (!this._imgUrl) {
+      this._loadGenericCanvas();
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
@@ -66,16 +76,30 @@ class FaceEditor {
     });
   }
 
+  setGenericUHeight(uHeight) {
+    const n = Number.parseFloat(uHeight);
+    this._genericUHeight = Number.isFinite(n) && n > 0 ? n : 1;
+  }
+
   setPorts(ports) {
     this._ports = ports.filter((p) => p.face === this._face || p.face == null);
     this._draw();
   }
 
-  setPins(positionMap) {
+  setPins(positionMap, portMap = new Map()) {
     // positionMap: { portName: {x, y, face} }
     this._pins = {};
     for (const [name, pos] of Object.entries(positionMap)) {
-      if (pos.face === this._face) this._pins[name] = { x: pos.x, y: pos.y };
+      if (!pos || typeof pos !== "object") continue;
+      if (!Number.isFinite(+pos.x) || !Number.isFinite(+pos.y)) continue;
+      const port = portMap.get(name);
+      const effectiveFace = port?.face || pos.face || this._face;
+      if (effectiveFace === this._face) {
+        this._pins[name] = {
+          x: Math.max(0, Math.min(1, +pos.x)),
+          y: Math.max(0, Math.min(1, +pos.y)),
+        };
+      }
     }
     this._draw();
   }
@@ -103,7 +127,11 @@ class FaceEditor {
   _draw() {
     const { _canvas: c, _ctx: ctx, _img: img } = this;
     ctx.clearRect(0, 0, c.width, c.height);
-    if (img) ctx.drawImage(img, 0, 0, c.width, c.height);
+    if (img) {
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+    } else {
+      this._drawGenericBackground();
+    }
 
     const color = this._face === "front" ? PIN_COLORS.front : PIN_COLORS.rear;
     for (const port of this._ports) {
@@ -120,6 +148,62 @@ class FaceEditor {
         // Ghost cursor hint: draw small circle at canvas centre if not yet placed
       }
     }
+  }
+
+  _loadGenericCanvas() {
+    this._img = null;
+    this._canvas.width = GENERIC_CANVAS_WIDTH;
+    const h = GENERIC_CANVAS_WIDTH * ((this._genericUHeight * RACK_U_HEIGHT_IN) / RACK_WIDTH_IN);
+    this._canvas.height = Math.max(120, Math.min(720, Math.round(h)));
+    this._draw();
+  }
+
+  _drawGenericBackground() {
+    const { _canvas: c, _ctx: ctx } = this;
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(0, 0, c.width, c.height);
+
+    const pad = Math.max(18, Math.round(c.height * 0.12));
+    const innerX = pad;
+    const innerY = pad;
+    const innerW = c.width - pad * 2;
+    const innerH = c.height - pad * 2;
+
+    ctx.fillStyle = "#1f2937";
+    ctx.fillRect(innerX, innerY, innerW, innerH);
+    ctx.strokeStyle = "#64748b";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(innerX, innerY, innerW, innerH);
+
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+    ctx.lineWidth = 1;
+    const cols = 12;
+    for (let i = 1; i < cols; i++) {
+      const x = innerX + (innerW * i) / cols;
+      ctx.beginPath();
+      ctx.moveTo(x, innerY);
+      ctx.lineTo(x, innerY + innerH);
+      ctx.stroke();
+    }
+
+    const rows = Math.max(1, Math.round(this._genericUHeight));
+    for (let i = 1; i < rows; i++) {
+      const y = innerY + (innerH * i) / rows;
+      ctx.beginPath();
+      ctx.moveTo(innerX, y);
+      ctx.lineTo(innerX + innerW, y);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "600 16px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(`Generic rear face · ${this._genericUHeight}U`, innerX + 10, innerY + 10);
+
+    ctx.fillStyle = "#64748b";
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillText("No rear image configured", innerX + 10, innerY + 32);
   }
 
   _drawPin(px, py, label, color) {
@@ -217,6 +301,8 @@ class PortLayoutApp {
     this._dtId = cfg.deviceTypeId;
     this._editors = {};
     this._allPorts = [];
+    this._portMap = new Map();
+    this._faceWarnings = new Set();
     this._showUnpositionedOnly = false;
 
     if (cfg.frontImage) {
@@ -229,7 +315,7 @@ class PortLayoutApp {
         this._editors["front"] = ed;
       }
     }
-    if (cfg.rearImage) {
+    if (cfg.rearImage || cfg.hasRearPorts) {
       const canvas = document.getElementById("iff-pl-canvas-rear");
       if (canvas) {
         const ed = new FaceEditor(canvas, "rear", cfg.rearImage);
@@ -292,9 +378,14 @@ class PortLayoutApp {
       );
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
-      this._allPorts = (data.ports || []).slice().sort(comparePorts);
+      this._allPorts = (data.ports || []).slice().sort((a, b) => comparePorts(a, b, this._activeFace));
+      this._portMap = new Map(this._allPorts.map((port) => [port.name, port]));
+      this._faceWarnings = this._collectFaceWarnings(data.port_positions || {});
 
       // Load images
+      for (const ed of Object.values(this._editors)) {
+        ed.setGenericUHeight(data.u_height);
+      }
       await Promise.all(
         Object.values(this._editors).map((ed) => ed.loadImage()),
       );
@@ -307,7 +398,7 @@ class PortLayoutApp {
       // Set existing pin positions
       const positions = data.port_positions || {};
       for (const ed of Object.values(this._editors)) {
-        ed.setPins(positions);
+        ed.setPins(positions, this._portMap);
       }
 
       this._selectNextUnpositioned();
@@ -402,9 +493,10 @@ class PortLayoutApp {
     if (!list) return;
 
     const allPins = this._mergedPins();
-    const ports = this._showUnpositionedOnly
+    const portsBase = this._showUnpositionedOnly
       ? this._allPorts.filter((p) => !allPins[p.name])
       : this._allPorts;
+    const ports = portsBase.slice().sort((a, b) => comparePorts(a, b, this._activeFace));
 
     this._refreshCurrentPortPanel(allPins);
 
@@ -419,6 +511,7 @@ class PortLayoutApp {
       li.innerHTML = `
         <span class="small">${port.name}</span>
         <span class="d-flex gap-1 align-items-center">
+          ${this._faceWarnings.has(port.name) ? `<span class="badge bg-warning text-dark" title="Saved face was inferred from port type">face</span>` : ""}
           <span class="badge ${positioned ? "bg-success" : "bg-secondary"}">${port.type}</span>
           ${positioned ? `<button class="btn btn-link btn-sm p-0 text-danger iff-pl-remove" data-port="${port.name}" title="Remove pin">✕</button>` : ""}
         </span>`;
@@ -484,8 +577,8 @@ class PortLayoutApp {
   _editorForPort(port) {
     if (port.face && this._editors[port.face]) return this._editors[port.face];
     // Guess from type
-    if (port.type === "front port") return this._editors["front"];
-    if (port.type === "rear port") return this._editors["rear"];
+    if (port.type === "frontport" || port.type === "interface" || port.type === "front port") return this._editors["front"];
+    if (port.type === "rearport" || port.type === "rear port") return this._editors["rear"];
     return this._editors[this._activeFace] || Object.values(this._editors)[0];
   }
 
@@ -493,7 +586,18 @@ class PortLayoutApp {
     return this._allPorts.filter((port) => {
       const editor = this._editorForPort(port);
       return editor && editor._face === face;
-    });
+    }).sort((a, b) => comparePorts(a, b, face));
+  }
+
+  _collectFaceWarnings(positionMap) {
+    const warnings = new Set();
+    for (const [name, pos] of Object.entries(positionMap)) {
+      if (!pos || typeof pos !== "object") continue;
+      const port = this._portMap.get(name);
+      if (!port || !port.face) continue;
+      if (!pos.face || pos.face !== port.face) warnings.add(name);
+    }
+    return warnings;
   }
 
   _setStatus(msg) {

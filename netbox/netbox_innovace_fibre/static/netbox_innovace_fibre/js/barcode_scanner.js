@@ -209,8 +209,8 @@ export class BarcodeScanner {
       const tag = (document.activeElement?.tagName || '').toUpperCase();
       const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
         || document.activeElement?.isContentEditable;
-
-      if (e.key === '/' && !isEditable && !e.ctrlKey && !e.metaKey) {
+// Toggle overlay with F2 key (not to be confused with ~ which requires Shift)
+      if (e.key === 'F2' && !isEditable && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         if (this._overlay?.style.display !== 'none') {
           this.deactivate();

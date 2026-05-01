@@ -45,7 +45,7 @@
       <button class="nav-link active" data-face="front">Front</button>
     </li>
     {% endif %}
-    {% if rear_image_url %}
+    {% if rear_image_url or has_rear_ports %}
     <li class="nav-item">
       <button class="nav-link{% if not front_image_url %} active{% endif %}"
               data-face="rear">Rear</button>
@@ -62,7 +62,7 @@
                 style="width:100%;border:1px solid #d0d7de;border-radius:6px;cursor:crosshair;"></canvas>
       </div>
       {% endif %}
-      {% if rear_image_url %}
+      {% if rear_image_url or has_rear_ports %}
       <div id="iff-pl-pane-rear" class="iff-pl-pane"
            style="display:{% if front_image_url %}none{% else %}block{% endif %}">
         <canvas id="iff-pl-canvas-rear"
@@ -113,7 +113,8 @@
     deviceTypeId: {{ device_type.pk }},
     frontImage: "{{ front_image_url|default:'' }}",
     rearImage:  "{{ rear_image_url|default:'' }}",
+    hasRearPorts: {{ has_rear_ports|yesno:"true,false" }},
   };
 </script>
-<script src="{% static 'netbox_innovace_fibre/js/port_layout_editor.js' %}?v=20260501-2"></script>
+<script src="{% static 'netbox_innovace_fibre/js/port_layout_editor.js' %}?v=20260501-rear-ports-1"></script>
 {% endblock %}

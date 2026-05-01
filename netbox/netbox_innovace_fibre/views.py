@@ -168,12 +168,15 @@ class PortLayoutEditorView(View):
 
     def get(self, request, pk):
         device_type = get_object_or_404(
-            DeviceType.objects.select_related('manufacturer'), pk=pk,
+            DeviceType.objects.select_related('manufacturer')
+            .prefetch_related('rearporttemplates'),
+            pk=pk,
         )
         front_image_url = _safe_image_url(device_type.front_image)
         rear_image_url = _safe_image_url(device_type.rear_image)
-        if not front_image_url and not rear_image_url:
-            raise Http404('No front or rear image on this device type')
+        has_rear_ports = device_type.rearporttemplates.exists()
+        if not front_image_url and not rear_image_url and not has_rear_ports:
+            raise Http404('No front or rear image or rear ports on this device type')
         return render(
             request,
             self.template_name,
@@ -181,6 +184,7 @@ class PortLayoutEditorView(View):
                 'device_type': device_type,
                 'front_image_url': front_image_url,
                 'rear_image_url': rear_image_url,
+                'has_rear_ports': has_rear_ports,
             },
         )
 

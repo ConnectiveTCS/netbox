@@ -750,11 +750,20 @@ def _build_rack_cables(devices_qs, physical_rack_by_device_id=None):
         cid = ct_row.cable_id
         if cid not in cable_terms:
             c = ct_row.cable
+            custom_fields = c.custom_field_data or {}
+            trunk_group = (
+                custom_fields.get('trunk_group')
+                or custom_fields.get('bundle_group')
+                or custom_fields.get('cable_trunk_group')
+                or custom_fields.get('iff_trunk_group')
+                or ''
+            )
             cable_terms[cid] = {
                 'id':    c.pk,
                 'label': c.label or '',
                 'color': c.color or '',
                 'type':  c.type or '',
+                'trunk_group': trunk_group,
                 'a_terminations': [],
                 'b_terminations': [],
             }
@@ -813,10 +822,12 @@ class PortLayoutAPIView(APIView):
             'device_type_id': dt.pk,
             'model':          dt.model,
             'manufacturer':   dt.manufacturer.name if dt.manufacturer_id else '',
+            'u_height':       float(dt.u_height),
             'front_image':    _safe_file_url(dt.front_image),
             'rear_image':     _safe_file_url(dt.rear_image),
             'port_positions': dt.custom_field_data.get('port_positions') or {},
             'ports':          _enumerate_device_type_ports(dt),
+            'has_rear_ports': dt.rearporttemplates.exists(),
         })
 
     def post(self, request, pk):
