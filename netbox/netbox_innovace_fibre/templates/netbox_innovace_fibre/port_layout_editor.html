@@ -34,8 +34,8 @@
   </div>
 
   <div class="alert alert-info py-2 mb-3 small">
-    Click a port in the list, then click on the image to place it. Drag existing pins to reposition.
-    Coordinates are stored as normalised 0–1 fractions of the image dimensions.
+    Click the image to place ports in order. The editor automatically advances to the next unpositioned port.
+    Drag existing pins to reposition them.
   </div>
 
   {# Face tabs #}
@@ -55,7 +55,7 @@
 
   <div class="row g-3">
     {# Canvas column #}
-    <div class="col-lg-8">
+    <div class="col-lg-8 iff-pl-canvas-column">
       {% if front_image_url %}
       <div id="iff-pl-pane-front" class="iff-pl-pane">
         <canvas id="iff-pl-canvas-front"
@@ -73,6 +73,13 @@
 
     {# Port list column #}
     <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header py-2 small fw-bold">Now placing</div>
+        <div class="card-body py-3">
+          <div id="iff-pl-current-port" class="h4 mb-1">Loading…</div>
+          <div id="iff-pl-current-help" class="small text-muted">Click the device image to place this port.</div>
+        </div>
+      </div>
       <div class="card h-100">
         <div class="card-header py-2 small fw-bold">Ports</div>
         <div class="card-body p-0" style="overflow-y:auto;max-height:600px;">
@@ -88,6 +95,17 @@
   .iff-pl-port-item { cursor: pointer; }
   .iff-pl-port-item.active { background: var(--bs-primary); color: #fff; }
   .iff-pl-port-item .badge { font-size: 0.7em; }
+  .iff-pl-canvas-column {
+    align-self: flex-start;
+    position: sticky;
+    top: 5rem;
+    z-index: 2;
+  }
+  @media (max-width: 991.98px) {
+    .iff-pl-canvas-column {
+      position: static;
+    }
+  }
 </style>
 
 <script>
@@ -97,5 +115,5 @@
     rearImage:  "{{ rear_image_url|default:'' }}",
   };
 </script>
-<script src="{% static 'netbox_innovace_fibre/js/port_layout_editor.js' %}?v=20260501"></script>
+<script src="{% static 'netbox_innovace_fibre/js/port_layout_editor.js' %}?v=20260501-2"></script>
 {% endblock %}

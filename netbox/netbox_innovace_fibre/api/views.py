@@ -13,6 +13,7 @@ from dcim.models import (
     Cable, CableTermination, Device, DeviceBay, DeviceRole, DeviceType,
     FrontPort, Interface, ModuleBay, Rack, RearPort, Site,
 )
+from dcim.utils import update_interface_bridges
 from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, FloorPlanVersion, SignalRouting
 from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_for_device
 
@@ -109,14 +110,29 @@ class TopologyDataAPIView(APIView):
         devices_qs = (
             Device.objects
             .select_related('device_type__manufacturer', 'role', 'site')
-            .prefetch_related('interfaces', 'frontports', 'rearports')
+            .prefetch_related(
+                'interfaces',
+                'frontports',
+                'rearports',
+                'device_type__interfacetemplates',
+                'device_type__frontporttemplates',
+                'device_type__rearporttemplates',
+                'modules__module_type__interfacetemplates',
+                'modules__module_type__frontporttemplates',
+                'modules__module_type__rearporttemplates',
+            )
         )
         if site_id:
             devices_qs = devices_qs.filter(site_id=site_id)
         if role_id:
             devices_qs = devices_qs.filter(role_id=role_id)
 
-        nodes = {dev.id: _serialise_device(dev) for dev in devices_qs}
+        devices = list(devices_qs)
+        if request.user.is_authenticated:
+            for dev in devices:
+                _ensure_topology_ports(dev)
+
+        nodes = {dev.id: _serialise_device(dev) for dev in devices}
 
         # All cable terminations regardless of port type (Interface, FrontPort, RearPort, …)
         terminations = (
@@ -444,6 +460,69 @@ class FloorPlanAPIView(APIView):
         user = request.user if request.user.is_authenticated else None
         version = FloorPlanVersion.objects.create(site=site, created_by=user, config=config)
         return Response({'version_id': version.pk, 'created_at': version.created_at}, status=201)
+
+
+def _ensure_topology_ports(dev):
+    """
+    Ensure existing devices expose cable endpoints defined by their type/templates.
+
+    NetBox instantiates component templates when a Device or Module is first
+    created. If templates are added later, older chassis/devices can appear in
+    topology with no connectable ports. This creates only missing topology
+    endpoint types and leaves unrelated components alone.
+    """
+    changed = False
+
+    if dev.device_type_id:
+        changed |= _ensure_template_components(dev, dev.device_type)
+
+    for module in dev.modules.all():
+        changed |= _ensure_template_components(dev, module.module_type, module=module)
+
+    if changed and hasattr(dev, '_prefetched_objects_cache'):
+        for key in ('interfaces', 'frontports', 'rearports'):
+            dev._prefetched_objects_cache.pop(key, None)
+
+
+def _ensure_template_components(device, template_owner, module=None):
+    changed = False
+
+    for templates_attr, components_attr in (
+        ('interfacetemplates', 'interfaces'),
+        ('frontporttemplates', 'frontports'),
+        ('rearporttemplates', 'rearports'),
+    ):
+        if hasattr(device, '_prefetched_objects_cache'):
+            device._prefetched_objects_cache.pop(components_attr, None)
+        existing = {
+            component.name: component
+            for component in getattr(device, components_attr).all()
+        }
+
+        for template in getattr(template_owner, templates_attr).all():
+            component = template.instantiate(device=device, module=module)
+            existing_component = existing.get(component.name)
+
+            if existing_component:
+                if module and existing_component.module_id is None:
+                    existing_component.module = module
+                    existing_component.save(update_fields=['module'])
+                    changed = True
+                continue
+
+            component.save()
+            existing[component.name] = component
+            changed = True
+
+        if changed and hasattr(device, '_prefetched_objects_cache'):
+            device._prefetched_objects_cache.pop(components_attr, None)
+
+    try:
+        update_interface_bridges(device, template_owner.interfacetemplates, module)
+    except Interface.DoesNotExist:
+        pass
+
+    return changed
 
 
 def _serialise_device(dev):

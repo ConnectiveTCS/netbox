@@ -8,6 +8,22 @@ const PIN_COLORS = {
   positioned: "#6b7280",
 };
 const API_BASE = "/api/plugins/innovace-fibre";
+const PORT_NAME_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function comparePorts(a, b) {
+  const faceOrder = { front: 0, rear: 1 };
+  const aFace = faceOrder[a.face] ?? 2;
+  const bFace = faceOrder[b.face] ?? 2;
+  if (aFace !== bFace) return aFace - bFace;
+
+  const typeCompare = PORT_NAME_COLLATOR.compare(a.type || "", b.type || "");
+  if (typeCompare !== 0) return typeCompare;
+
+  return PORT_NAME_COLLATOR.compare(a.name || "", b.name || "");
+}
 
 // ── FaceEditor ─────────────────────────────────────────────────────────────────
 // Manages one canvas (one device face).
@@ -19,7 +35,7 @@ class FaceEditor {
     this._face = face; // 'front' | 'rear'
     this._img = null;
     this._imgUrl = imageUrl;
-    this._ports = []; // [{name, face}] — all ports for this face
+    this._ports = []; // [{name, face}] - all ports for this face
     this._pins = {}; // portName → {x, y}  (normalised 0-1)
     this._selected = null; // portName currently selected for placement
     this._dragging = null; // portName being dragged
@@ -162,12 +178,14 @@ class FaceEditor {
       e.preventDefault();
       return;
     }
-    // Place selected port at click position
-    if (this._selected) {
+    // Place selected port at click position.
+    if (this._selected && this._ports.some((port) => port.name === this._selected)) {
+      const placedPort = this._selected;
       this._pins[this._selected] = {
         x: px / this._canvas.width,
         y: py / this._canvas.height,
       };
+      this._onPinPlaced?.(placedPort);
       this._onPinChange?.();
       this._draw();
     }
@@ -206,6 +224,7 @@ class PortLayoutApp {
       if (canvas) {
         const ed = new FaceEditor(canvas, "front", cfg.frontImage);
         ed._onPinChange = () => this._refreshPortList();
+        ed._onPinPlaced = (n) => this._advanceFrom(n);
         ed._onSelectPort = (n) => this._selectPort(n);
         this._editors["front"] = ed;
       }
@@ -215,6 +234,7 @@ class PortLayoutApp {
       if (canvas) {
         const ed = new FaceEditor(canvas, "rear", cfg.rearImage);
         ed._onPinChange = () => this._refreshPortList();
+        ed._onPinPlaced = (n) => this._advanceFrom(n);
         ed._onSelectPort = (n) => this._selectPort(n);
         this._editors["rear"] = ed;
       }
@@ -253,6 +273,12 @@ class PortLayoutApp {
           .querySelectorAll(".iff-pl-pane")
           .forEach((p) => (p.style.display = "none"));
         document.getElementById(`iff-pl-pane-${face}`).style.display = "block";
+        const selectedPort = this._allPorts.find((p) => p.name === this._selectedPort);
+        const selectedEditor = selectedPort ? this._editorForPort(selectedPort) : null;
+        if (!selectedEditor || selectedEditor._face !== face || this._mergedPins()[this._selectedPort]) {
+          this._selectNextUnpositioned();
+          return;
+        }
         this._refreshPortList();
       });
     });
@@ -266,7 +292,7 @@ class PortLayoutApp {
       );
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
-      this._allPorts = data.ports || [];
+      this._allPorts = (data.ports || []).slice().sort(comparePorts);
 
       // Load images
       await Promise.all(
@@ -284,6 +310,7 @@ class PortLayoutApp {
         ed.setPins(positions);
       }
 
+      this._selectNextUnpositioned();
       this._refreshPortList();
       this._setStatus("Ready");
     } catch (err) {
@@ -342,6 +369,34 @@ class PortLayoutApp {
     this._refreshPortList();
   }
 
+  _advanceFrom(portName) {
+    this._selectNextUnpositioned(portName);
+  }
+
+  _selectNextUnpositioned(afterPortName = null) {
+    const allPins = this._mergedPins();
+    const ports = this._portsForFace(this._activeFace);
+    const unpositioned = ports.filter((p) => !allPins[p.name]);
+
+    if (unpositioned.length === 0) {
+      this._selectPort(null);
+      return null;
+    }
+
+    if (!afterPortName) {
+      this._selectPort(unpositioned[0].name);
+      return unpositioned[0];
+    }
+
+    const afterIndex = ports.findIndex((p) => p.name === afterPortName);
+    const next =
+      unpositioned.find((p) => ports.findIndex((candidate) => candidate.name === p.name) > afterIndex) ||
+      unpositioned[0];
+
+    this._selectPort(next.name);
+    return next;
+  }
+
   _refreshPortList() {
     const list = document.getElementById("iff-pl-port-list");
     if (!list) return;
@@ -351,12 +406,16 @@ class PortLayoutApp {
       ? this._allPorts.filter((p) => !allPins[p.name])
       : this._allPorts;
 
+    this._refreshCurrentPortPanel(allPins);
+
     list.innerHTML = "";
+    let activeItem = null;
     for (const port of ports) {
       const positioned = !!allPins[port.name];
       const isActive = port.name === this._selectedPort;
       const li = document.createElement("li");
       li.className = `list-group-item list-group-item-action iff-pl-port-item d-flex justify-content-between align-items-center py-1 px-2${isActive ? " active" : ""}`;
+      if (isActive) activeItem = li;
       li.innerHTML = `
         <span class="small">${port.name}</span>
         <span class="d-flex gap-1 align-items-center">
@@ -371,9 +430,11 @@ class PortLayoutApp {
         if (faceEd && faceEd._face !== this._activeFace) {
           document.querySelector(`[data-face="${faceEd._face}"]`)?.click();
         }
+        this._refreshCurrentPortPanel(this._mergedPins());
       });
       list.appendChild(li);
     }
+    activeItem?.scrollIntoView({ block: "nearest" });
 
     // Remove pin buttons
     list.querySelectorAll(".iff-pl-remove").forEach((btn) => {
@@ -381,10 +442,36 @@ class PortLayoutApp {
         e.stopPropagation();
         const pname = btn.dataset.port;
         for (const ed of Object.values(this._editors)) ed.removePin(pname);
-        if (this._selectedPort === pname) this._selectedPort = null;
+        const port = this._allPorts.find((p) => p.name === pname);
+        const faceEd = port ? this._editorForPort(port) : null;
+        if (faceEd && faceEd._face !== this._activeFace) {
+          document.querySelector(`[data-face="${faceEd._face}"]`)?.click();
+        }
+        this._selectPort(pname);
         this._refreshPortList();
       });
     });
+  }
+
+  _refreshCurrentPortPanel(allPins = this._mergedPins()) {
+    const nameEl = document.getElementById("iff-pl-current-port");
+    const helpEl = document.getElementById("iff-pl-current-help");
+    if (!nameEl || !helpEl) return;
+
+    const current = this._allPorts.find((p) => p.name === this._selectedPort);
+    const remaining = this._portsForFace(this._activeFace).filter((p) => !allPins[p.name]).length;
+
+    if (!current) {
+      nameEl.textContent = "All ports placed";
+      helpEl.textContent = "Drag any pin to fine-tune its position, or remove a pin to place it again.";
+      return;
+    }
+
+    const positioned = !!allPins[current.name];
+    nameEl.textContent = current.name;
+    helpEl.textContent = positioned
+      ? "This port already has a pin. Drag it to reposition, or pick an unpositioned port from the list."
+      : `${remaining} unpositioned ${remaining === 1 ? "port" : "ports"} left on this face. Click the image to place this one.`;
   }
 
   _mergedPins() {
@@ -400,6 +487,13 @@ class PortLayoutApp {
     if (port.type === "front port") return this._editors["front"];
     if (port.type === "rear port") return this._editors["rear"];
     return this._editors[this._activeFace] || Object.values(this._editors)[0];
+  }
+
+  _portsForFace(face) {
+    return this._allPorts.filter((port) => {
+      const editor = this._editorForPort(port);
+      return editor && editor._face === face;
+    });
   }
 
   _setStatus(msg) {
