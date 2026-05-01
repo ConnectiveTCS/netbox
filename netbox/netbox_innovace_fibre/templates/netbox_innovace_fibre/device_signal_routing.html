@@ -18,6 +18,45 @@
 </div>
 {% endif %}
 
+<div class="card mb-3">
+    <div class="card-header"><strong>Custom Mapping Actions</strong></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <h3 class="h5">Link to Device Type</h3>
+                <p class="text-muted small mb-2">
+                    Replace the default routing for <strong>{{ device.device_type }}</strong> with this device's overrides.
+                    Devices without their own overrides will use the linked defaults.
+                </p>
+                <form method="post"
+                    action="{% url 'plugins:netbox_innovace_fibre:device_signal_routing_link_to_type' device.pk %}"
+                    onsubmit="return confirm(&quot;Replace device type defaults for {{ device.device_type|escapejs }} with this device's overrides?&quot;);">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-primary" {% if not overrides %}disabled{% endif %}>
+                        <i class="mdi mdi-link-variant"></i> Link to Device Type
+                    </button>
+                </form>
+            </div>
+            <div class="col-md-6">
+                <h3 class="h5">Clone to Similar Devices</h3>
+                <p class="text-muted small mb-2">
+                    Copy this override set to {{ similar_device_count }} other device(s) using
+                    <strong>{{ device.device_type }}</strong>. Existing overrides on
+                    {{ similar_devices_with_overrides_count }} of them will be replaced.
+                </p>
+                <form method="post"
+                    action="{% url 'plugins:netbox_innovace_fibre:device_signal_routing_clone_to_similar' device.pk %}"
+                    onsubmit="return confirm('Replace overrides on all other {{ device.device_type|escapejs }} devices with this set?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-warning" {% if not overrides or not similar_device_count %}disabled{% endif %}>
+                        <i class="mdi mdi-content-copy"></i> Clone to Similar Devices
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <h2>Device-Level Overrides</h2>
 <table class="table table-hover">
     <thead>

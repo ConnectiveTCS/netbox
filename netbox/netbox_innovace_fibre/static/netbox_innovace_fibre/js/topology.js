@@ -2,7 +2,7 @@
  * Fibre Topology Workspace
  * Canvas-based topology with explicit view/arrange/connect modes.
  */
-import { BarcodeScanner, showSignalModal } from "./barcode_scanner.js";
+import { BarcodeScanner } from "./barcode_scanner.js";
 
 const PALETTE = [
   "#4A90D9", "#4A148C", "#1B5E20", "#E65100", "#880E4F",
@@ -26,6 +26,10 @@ function hexToRgb(hex) {
     16,
   );
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function logicalPortName(name) {
+  return String(name || "").replace(/_(front|rear)$/i, "");
 }
 
 class DeviceNode {
@@ -165,10 +169,19 @@ class CableEdge {
     this.srcNode = srcNode;
     this.tgtNode = tgtNode;
     this.manager = manager;
+    this.srcObjectId = data.source_object_id || null;
+    this.srcObjectType = data.source_object_type || "";
+    this.tgtObjectId = data.target_object_id || null;
+    this.tgtObjectType = data.target_object_type || "";
     this.srcPort = data.source_port || "";
     this.tgtPort = data.target_port || "";
+    this.srcLogicalPort = data.source_logical_port || logicalPortName(this.srcPort);
+    this.tgtLogicalPort = data.target_logical_port || logicalPortName(this.tgtPort);
+    this.srcEndpointLabel = data.source_endpoint_label || "";
+    this.tgtEndpointLabel = data.target_endpoint_label || "";
     this.srcSignal = data.source_signal_channel || 1;
     this.tgtSignal = data.target_signal_channel || 1;
+    this.traceDirection = data.trace_direction || "unknown";
     const raw = data.color ? data.color.replace("#", "") : "";
     this.color = raw.length >= 6 ? `#${raw}` : "#3d6fa8";
     this.edgeIndex = 0;
@@ -261,8 +274,10 @@ class CableEdge {
   drawAnnotations(ctx, scale = 1) {
     const g = this.geometry();
     if (!g) return;
+    const display = this.displayNodes();
     const showLabels = this.highlighted || this.hovered || scale >= 0.72;
     const showPorts = this.highlighted || this.hovered || scale >= 1.05;
+    const showHiddenEndpointLabels = display.srcGhost || display.tgtGhost;
     if (!showLabels && !showPorts) return;
     const lx = 0.25 * g.sa.x + 0.5 * g.mx + 0.25 * g.ta.x;
     const ly = 0.25 * g.sa.y + 0.5 * g.my + 0.25 * g.ta.y;
@@ -275,20 +290,43 @@ class CableEdge {
     ctx.shadowBlur = 4;
     ctx.fillStyle = this.highlighted || this.hovered ? "#bae6fd" : "#9eaec8";
     if (showLabels && this.label) ctx.fillText(this.label, lx, ly - 8);
-    if (showPorts) this._drawPortLabels(ctx, g, scale);
+    if (showPorts || (showLabels && showHiddenEndpointLabels)) this._drawPortLabels(ctx, g, display);
     ctx.restore();
   }
 
-  _drawPortLabels(ctx, g) {
+  _drawPortLabels(ctx, g, display = this.displayNodes()) {
     const perp = 13;
     const draw = (text, t) => {
       const mt = 1 - t;
       const lx = mt * mt * g.sa.x + 2 * mt * t * g.mx + t * t * g.ta.x + g.nx * perp;
       const ly = mt * mt * g.sa.y + 2 * mt * t * g.my + t * t * g.ta.y + g.ny * perp;
-      ctx.fillText(text, lx, ly);
+      ctx.fillText(this._clipLabel(ctx, text, 132), lx, ly);
     };
-    if (this.srcPort) draw(`${this.srcPort}${this.srcSignal > 1 ? `:${this.srcSignal}` : ""}`, 0.15);
-    if (this.tgtPort) draw(`${this.tgtPort}${this.tgtSignal > 1 ? `:${this.tgtSignal}` : ""}`, 0.85);
+    const srcLabel = this._endpointPortLabel("src", display.srcGhost);
+    const tgtLabel = this._endpointPortLabel("tgt", display.tgtGhost);
+    if (srcLabel) draw(srcLabel, 0.15);
+    if (tgtLabel) draw(tgtLabel, 0.85);
+  }
+
+  _endpointPortLabel(side, hiddenByParent) {
+    const isSrc = side === "src";
+    const port = isSrc ? this.srcPort : this.tgtPort;
+    const signal = isSrc ? this.srcSignal : this.tgtSignal;
+    const fullLabel = isSrc ? this.srcEndpointLabel : this.tgtEndpointLabel;
+    const node = isSrc ? this.srcNode : this.tgtNode;
+    let label = hiddenByParent
+      ? fullLabel || [node?.label, port].filter(Boolean).join(":")
+      : port;
+    if (!label) return "";
+    if (signal > 1) label += `:${signal}`;
+    return label;
+  }
+
+  _clipLabel(ctx, text, maxW) {
+    if (!text || ctx.measureText(text).width <= maxW) return text || "";
+    let t = String(text);
+    while (t.length > 0 && ctx.measureText(t + "...").width > maxW) t = t.slice(0, -1);
+    return t ? t + "..." : "";
   }
 
   _drawGhostEndpoint(ctx, point, active) {
@@ -334,7 +372,11 @@ class CanvasManager {
     this._pulse = 0;
     this._animating = false;
     this._hoverEdge = null;
+    this._pointers = new Map();
+    this._pinch = null;
+    this._edgeTap = null;
     this.onSelectNode = null;
+    this.onSelectEdge = null;
     this.onContextEdge = null;
     this.onLayoutChange = null;
     this.onHoverEdge = null;
@@ -375,6 +417,7 @@ class CanvasManager {
       edge.totalEdges = pairCount.get(key);
       this.edges.push(edge);
     }
+    this._updateEdgeFanout();
     this.fitView();
   }
 
@@ -419,6 +462,29 @@ class CanvasManager {
     return node;
   }
 
+  _updateEdgeFanout() {
+    const pairCount = new Map();
+    for (const edge of this.edges) {
+      const key = this._displayPairKey(edge);
+      pairCount.set(key, (pairCount.get(key) || 0) + 1);
+    }
+    const pairIdx = new Map();
+    for (const edge of this.edges) {
+      const key = this._displayPairKey(edge);
+      const idx = pairIdx.get(key) || 0;
+      pairIdx.set(key, idx + 1);
+      edge.edgeIndex = idx;
+      edge.totalEdges = pairCount.get(key) || 1;
+    }
+    this._dirty = true;
+  }
+
+  _displayPairKey(edge) {
+    const src = this.displayNodeFor(edge.srcNode);
+    const tgt = this.displayNodeFor(edge.tgtNode);
+    return _pairKey(src?.id ?? edge.srcNode?.id ?? 0, tgt?.id ?? edge.tgtNode?.id ?? 0);
+  }
+
   selectNode(node, zoom = false) {
     this.nodes.forEach((n) => (n.selected = false));
     if (node) {
@@ -460,9 +526,13 @@ class CanvasManager {
   zoomBy(factor) {
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
-    const ns = Math.max(0.08, Math.min(4, this.scale * factor));
-    this.panX = cx - (cx - this.panX) * (ns / this.scale);
-    this.panY = cy - (cy - this.panY) * (ns / this.scale);
+    this.zoomAt(cx, cy, this.scale * factor);
+  }
+
+  zoomAt(sx, sy, targetScale) {
+    const ns = Math.max(0.08, Math.min(4, targetScale));
+    this.panX = sx - (sx - this.panX) * (ns / this.scale);
+    this.panY = sy - (sy - this.panY) * (ns / this.scale);
     this.scale = ns;
     this._dirty = true;
   }
@@ -508,6 +578,7 @@ class CanvasManager {
         if (!Number.isFinite(n.y) || n.y === 0) n.y = parent.y + parent.height + 18 + idx * 92;
       }
     });
+    this._updateEdgeFanout();
   }
 
   _loop() {
@@ -543,10 +614,10 @@ class CanvasManager {
 
   _bindEvents() {
     const c = this.canvas;
-    c.addEventListener("mousedown", (e) => this._onDown(e));
-    c.addEventListener("mousemove", (e) => this._onMove(e));
-    c.addEventListener("mouseup", () => this._onUp());
-    c.addEventListener("mouseleave", () => this._onUp());
+    c.addEventListener("pointerdown", (e) => this._onPointerDown(e));
+    c.addEventListener("pointermove", (e) => this._onPointerMove(e));
+    c.addEventListener("pointerup", (e) => this._onPointerUp(e));
+    c.addEventListener("pointercancel", (e) => this._onPointerUp(e));
     c.addEventListener("wheel", (e) => this._onWheel(e), { passive: false });
     c.addEventListener("dblclick", () => this.fitView());
     c.addEventListener("contextmenu", (e) => this._onContextMenu(e));
@@ -562,16 +633,31 @@ class CanvasManager {
     return arr.find((n) => n.hitTest(wx, wy)) || null;
   }
 
+  _hitEdge(wx, wy, threshold = 10 / this.scale) {
+    return this.edges.find((edge) => edge.hitTest(wx, wy, threshold)) || null;
+  }
+
   _onContextMenu(e) {
     e.preventDefault();
     const s = this._canvasXY(e);
     const w = this.screenToWorld(s.x, s.y);
-    const edge = this.edges.find((edge) => edge.hitTest(w.x, w.y, 8 / this.scale));
+    const edge = this._hitEdge(w.x, w.y, 10 / this.scale);
     if (edge && this.onContextEdge) this.onContextEdge(edge, e.clientX, e.clientY);
   }
 
-  _onDown(e) {
-    if (e.button !== 0) return;
+  _onPointerDown(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    this.canvas.setPointerCapture?.(e.pointerId);
+    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this._pointers.size === 2) {
+      this._dragging = null;
+      this._panning = null;
+      this._edgeTap = null;
+      this._pinch = this._pinchState();
+      return;
+    }
+
     const s = this._canvasXY(e);
     const w = this.screenToWorld(s.x, s.y);
     const hit = this._hitNode(w.x, w.y);
@@ -589,14 +675,32 @@ class CanvasManager {
         this.canvas.style.cursor = "grabbing";
       }
     } else {
-      this.selectNode(null);
-      this._panning = { sx: e.clientX, sy: e.clientY, px: this.panX, py: this.panY };
-      this.canvas.style.cursor = "grabbing";
+      const edge = this._hitEdge(w.x, w.y, 14 / this.scale);
+      if (edge) {
+        this._edgeTap = { edge, sx: e.clientX, sy: e.clientY };
+        this.canvas.style.cursor = "pointer";
+      } else {
+        this.selectNode(null);
+        this._panning = { sx: e.clientX, sy: e.clientY, px: this.panX, py: this.panY };
+        this.canvas.style.cursor = "grabbing";
+      }
     }
     this._dirty = true;
   }
 
-  _onMove(e) {
+  _onPointerMove(e) {
+    e.preventDefault();
+    if (this._pointers.has(e.pointerId)) {
+      this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    if (this._pointers.size >= 2 && this._pinch) {
+      const next = this._pinchState();
+      if (next.dist > 0 && this._pinch.dist > 0) {
+        this.zoomAt(next.cx - this.canvas.getBoundingClientRect().left, next.cy - this.canvas.getBoundingClientRect().top, this._pinch.scale * (next.dist / this._pinch.dist));
+      }
+      return;
+    }
+
     if (this._dragging) {
       const s = this._canvasXY(e);
       const w = this.screenToWorld(s.x, s.y);
@@ -611,10 +715,13 @@ class CanvasManager {
       this._dirty = true;
       return;
     }
+    if (this._edgeTap && Math.hypot(e.clientX - this._edgeTap.sx, e.clientY - this._edgeTap.sy) > 8) {
+      this._edgeTap = null;
+    }
     const s = this._canvasXY(e);
     const w = this.screenToWorld(s.x, s.y);
     const node = this._hitNode(w.x, w.y);
-    const edge = !node ? this.edges.find((ed) => ed.hitTest(w.x, w.y, 6 / this.scale)) || null : null;
+    const edge = !node ? this._hitEdge(w.x, w.y, 8 / this.scale) : null;
     if (edge !== this._hoverEdge) {
       if (this._hoverEdge) this._hoverEdge.hovered = false;
       this._hoverEdge = edge;
@@ -625,7 +732,17 @@ class CanvasManager {
     this.canvas.style.cursor = node ? (this.mode === "arrange" ? "grab" : "pointer") : edge ? "context-menu" : "default";
   }
 
-  _onUp() {
+  _onPointerUp(e) {
+    e.preventDefault();
+    this._pointers.delete(e.pointerId);
+    if (this.canvas.hasPointerCapture?.(e.pointerId)) {
+      this.canvas.releasePointerCapture(e.pointerId);
+    }
+    if (this._pointers.size < 2) this._pinch = null;
+    if (this._edgeTap && Math.hypot(e.clientX - this._edgeTap.sx, e.clientY - this._edgeTap.sy) <= 8) {
+      this.onSelectEdge?.(this._edgeTap.edge);
+    }
+    this._edgeTap = null;
     if (this._dragging) this.onLayoutChange?.();
     this._dragging = null;
     this._panning = null;
@@ -635,12 +752,21 @@ class CanvasManager {
   _onWheel(e) {
     e.preventDefault();
     const s = this._canvasXY(e);
-    const f = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const ns = Math.max(0.08, Math.min(4, this.scale * f));
-    this.panX = s.x - (s.x - this.panX) * (ns / this.scale);
-    this.panY = s.y - (s.y - this.panY) * (ns / this.scale);
-    this.scale = ns;
-    this._dirty = true;
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    this.zoomAt(s.x, s.y, this.scale * factor);
+  }
+
+  _pinchState() {
+    const pts = [...this._pointers.values()];
+    if (pts.length < 2) return null;
+    const a = pts[0];
+    const b = pts[1];
+    return {
+      cx: (a.x + b.x) / 2,
+      cy: (a.y + b.y) / 2,
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      scale: this.scale,
+    };
   }
 
   _resize() {
@@ -782,6 +908,47 @@ document.addEventListener("DOMContentLoaded", () => {
   let layoutDirty = false;
   const connectState = { active: false, fromNode: null, fromPort: null, fromChannel: 1 };
 
+  function portKey(port) {
+    return `${port.object_type || ""}:${port.id || ""}`;
+  }
+
+  function edgeEndpointKey(edge, end) {
+    return end === "a"
+      ? `${edge.srcObjectType || ""}:${edge.srcObjectId || ""}`
+      : `${edge.tgtObjectType || ""}:${edge.tgtObjectId || ""}`;
+  }
+
+  function buildPortConnectionIndex() {
+    const index = new Map();
+    mgr.edges.forEach((edge) => {
+      const aKey = edgeEndpointKey(edge, "a");
+      const bKey = edgeEndpointKey(edge, "b");
+      if (aKey !== ":") index.set(aKey, { edge, entryEnd: "a" });
+      if (bKey !== ":") index.set(bKey, { edge, entryEnd: "b" });
+    });
+    return index;
+  }
+
+  function connectionForPort(index, node, port) {
+    const direct = index.get(portKey(port));
+    if (direct) return direct;
+    const edge = mgr.edges.find((candidate) =>
+      (candidate.srcNode?.id === node.id && candidate.srcPort === port.name) ||
+      (candidate.tgtNode?.id === node.id && candidate.tgtPort === port.name),
+    );
+    if (!edge) return null;
+    return {
+      edge,
+      entryEnd: edge.srcNode?.id === node.id && edge.srcPort === port.name ? "a" : "b",
+    };
+  }
+
+  function oppositeEndpointLabel(edge, entryEnd) {
+    return entryEnd === "a"
+      ? edge.tgtEndpointLabel || `${edge.tgtNode?.label || "B"}:${edge.tgtPort}`
+      : edge.srcEndpointLabel || `${edge.srcNode?.label || "A"}:${edge.srcPort}`;
+  }
+
   mgr.onLayoutChange = () => {
     layoutDirty = true;
     updateSaveStatus();
@@ -856,11 +1023,15 @@ document.addEventListener("DOMContentLoaded", () => {
     ctxEdge = null;
   }
 
+  mgr.onSelectEdge = (edge) => {
+    renderCableDetail(edge);
+  };
+
   mgr.onContextEdge = (edge, screenX, screenY) => {
     ctxEdge = edge;
     ctxEdgeLabel.textContent = `${_short(edge.srcNode.label)}:${edge.srcPort} -> ${_short(edge.tgtNode.label)}:${edge.tgtPort}`;
-    document.getElementById("ctx-trace-ab").textContent = `Trace into ${_short(edge.tgtNode.label)} at ${edge.tgtPort}`;
-    document.getElementById("ctx-trace-ba").textContent = `Trace into ${_short(edge.srcNode.label)} at ${edge.srcPort}`;
+    document.getElementById("ctx-trace-ab").textContent = `Trace A -> B into ${_short(edge.tgtNode.label)}`;
+    document.getElementById("ctx-trace-ba").textContent = `Trace B -> A into ${_short(edge.srcNode.label)}`;
     ctxMenu.style.display = "block";
     const mw = ctxMenu.offsetWidth;
     const mh = ctxMenu.offsetHeight;
@@ -872,20 +1043,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!ctxEdge) return;
     const edge = ctxEdge;
     hideCtxMenu();
-    const ids = await _traceSignal(edge.tgtNode.id, edge.tgtPort, edge.tgtSignal || 1);
-    ids.add(edge.id);
-    mgr.highlightEdges(ids);
-    btnClearTrace.style.display = "";
+    await runFullTrace(edge, "a");
   });
 
   document.getElementById("ctx-trace-ba").addEventListener("click", async () => {
     if (!ctxEdge) return;
     const edge = ctxEdge;
     hideCtxMenu();
-    const ids = await _traceSignal(edge.srcNode.id, edge.srcPort, edge.srcSignal || 1);
-    ids.add(edge.id);
-    mgr.highlightEdges(ids);
-    btnClearTrace.style.display = "";
+    await runFullTrace(edge, "b");
   });
 
   document.getElementById("ctx-disconnect").addEventListener("click", async () => {
@@ -921,6 +1086,177 @@ document.addEventListener("DOMContentLoaded", () => {
     btnClearTrace.style.display = "none";
   });
 
+  async function fetchFullTrace(edge, entryEnd, override = false) {
+    const res = await fetch("/api/plugins/innovace-fibre/trace/full/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": _csrf() },
+      body: JSON.stringify({
+        cable_id: edge.id,
+        entry_end: entryEnd,
+        override_direction: !!override,
+      }),
+    });
+
+    const contentType = res.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await res.json()
+      : { error: await res.text() };
+
+    if (!res.ok) {
+      const detail = _plainError(data.error);
+      throw new Error(detail || `Trace request failed: ${res.status} ${res.statusText}`);
+    }
+    return data;
+  }
+
+  async function runFullTrace(edge, entryEnd, override = null) {
+    const overrideBox = detailBody.querySelector("#topo-trace-override");
+    const shouldOverride = override ?? !!overrideBox?.checked;
+    detailTitle.textContent = `Tracing cable #${edge.id}`;
+    detailBody.innerHTML = `<div class="topo-trace-loading">Tracing full path...</div>`;
+    detail.classList.remove("topo-detail-hidden");
+    try {
+      const data = await fetchFullTrace(edge, entryEnd, shouldOverride);
+      const ids = new Set(data.highlight_cable_ids || []);
+      if (ids.size) mgr.highlightEdges(ids);
+      btnClearTrace.style.display = ids.size ? "" : "none";
+      renderTraceResult(edge, data);
+    } catch (err) {
+      detailBody.innerHTML = `<div class="topo-trace-warning">${_esc(err.message)}</div>`;
+    }
+  }
+
+  function renderCableDetail(edge) {
+    mgr.clearTrace();
+    mgr.highlightEdges(new Set([edge.id]));
+    btnClearTrace.style.display = "";
+    detailTitle.textContent = edge.label || `Cable #${edge.id}`;
+    detailBody.innerHTML = `
+      ${row("A End", edge.srcEndpointLabel || `${edge.srcNode.label}:${edge.srcPort}${edge.srcSignal > 1 ? ":" + edge.srcSignal : ""}`)}
+      ${row("B End", edge.tgtEndpointLabel || `${edge.tgtNode.label}:${edge.tgtPort}${edge.tgtSignal > 1 ? ":" + edge.tgtSignal : ""}`)}
+      ${edge.srcLogicalPort !== edge.srcPort ? row("A Alias", edge.srcLogicalPort) : ""}
+      ${edge.tgtLogicalPort !== edge.tgtPort ? row("B Alias", edge.tgtLogicalPort) : ""}
+      ${row("Direction", _traceDirectionLabel(edge.traceDirection))}
+      <label class="topo-trace-check">
+        <input id="topo-trace-override" type="checkbox">
+        <span>Override saved direction for this trace</span>
+      </label>
+      <div class="topo-detail-actions">
+        <button class="topo-inline-btn" id="topo-trace-a">Trace A -> B</button>
+        <button class="topo-inline-btn" id="topo-trace-b">Trace B -> A</button>
+      </div>
+      <div class="topo-trace-note">Tap a cable to inspect it. Full trace follows saved direction unless override is checked.</div>
+    `;
+    detail.classList.remove("topo-detail-hidden");
+    detailBody.querySelector("#topo-trace-a").addEventListener("click", () => runFullTrace(edge, "a"));
+    detailBody.querySelector("#topo-trace-b").addEventListener("click", () => runFullTrace(edge, "b"));
+  }
+
+  function renderTraceResult(edge, result) {
+    const warnings = result.warnings || [];
+    const branches = result.branches || [];
+    detailTitle.textContent = `Trace: ${edge.label || "Cable #" + edge.id}`;
+    detailBody.innerHTML = `
+      ${row("Start", `${(result.start?.entry_end || "").toUpperCase()} end of cable #${result.start?.cable_id || edge.id}`)}
+      ${row("Direction", _traceDirectionLabel(result.start?.trace_direction || edge.traceDirection))}
+      ${row("Branches", String(branches.length))}
+      ${warnings.length ? `<div class="topo-trace-warning">${warnings.map((w) => _esc(w.message || w)).join("<br>")}</div>` : ""}
+      <div class="topo-detail-actions">
+        <button class="topo-inline-btn" id="topo-export-branches">Export Branch CSV</button>
+        <button class="topo-inline-btn" id="topo-export-hops">Export Hop CSV</button>
+      </div>
+      <div class="topo-trace-branches">
+        ${branches.map((branch, idx) => _renderTraceBranch(branch, idx)).join("")}
+      </div>
+    `;
+    detail.classList.remove("topo-detail-hidden");
+    detailBody.querySelector("#topo-export-branches").addEventListener("click", () => exportTraceBranches(result));
+    detailBody.querySelector("#topo-export-hops").addEventListener("click", () => exportTraceHops(result));
+  }
+
+  function _renderTraceBranch(branch, idx) {
+    const terminal = branch.terminal || {};
+    const terminalText = terminal.device
+      ? `${terminal.device}:${terminal.port || ""}${terminal.signal ? ":" + terminal.signal : ""}`
+      : terminal.reason || "terminal";
+    return `<div class="topo-trace-branch">
+      <div class="topo-port-group-title">Branch ${idx + 1}<span>${_esc(terminalText)}</span></div>
+      ${(branch.hops || []).map((hop, hopIdx) => _renderTraceHop(hop, hopIdx)).join("")}
+      ${(branch.warnings || []).map((w) => `<div class="topo-trace-warning">${_esc(w.message || w)}</div>`).join("")}
+    </div>`;
+  }
+
+  function _renderTraceHop(hop, idx) {
+    if (hop.type === "cable") {
+      return `<div class="topo-trace-hop"><strong>${idx + 1}. Cable #${hop.cable_id}</strong>
+        <span>${_esc(hop.from_device || "A")}:${_esc(hop.from_port || "")} -> ${_esc(hop.to_device || "B")}:${_esc(hop.to_port || "")}</span>
+      </div>`;
+    }
+    return `<div class="topo-trace-hop"><strong>${idx + 1}. Internal</strong>
+      <span>${_esc(hop.device || "")}: ${_esc(hop.from_port || "")}:${hop.from_signal || ""} -> ${_esc(hop.to_port || "")}:${hop.to_signal || ""}</span>
+    </div>`;
+  }
+
+  function exportTraceBranches(result) {
+    const rows = [["trace_id", "branch_id", "terminal", "cable_ids", "device_ids", "warnings"]];
+    (result.branches || []).forEach((branch) => {
+      const t = branch.terminal || {};
+      rows.push([
+        result.trace_id || "",
+        branch.id || "",
+        t.device ? `${t.device}:${t.port || ""}:${t.signal || ""}` : t.reason || "",
+        (branch.cable_ids || []).join("|"),
+        (branch.device_ids || []).join("|"),
+        (branch.warnings || []).map((w) => w.message || w).join("|"),
+      ]);
+    });
+    downloadCsv(`trace-${result.trace_id || "branches"}.csv`, rows);
+  }
+
+  function exportTraceHops(result) {
+    const rows = [["trace_id", "branch_id", "sequence", "type", "from_device", "device", "to_device", "from_port", "from_signal", "to_port", "to_signal", "cable_id", "direction"]];
+    (result.hops || []).forEach((hop, idx) => {
+      rows.push([
+        result.trace_id || "",
+        hop.branch_id || "",
+        idx + 1,
+        hop.type || "",
+        hop.from_device || "",
+        hop.device || hop.to_device || "",
+        hop.to_device || "",
+        hop.from_port || "",
+        hop.from_signal || "",
+        hop.to_port || "",
+        hop.to_signal || "",
+        hop.cable_id || "",
+        hop.trace_direction || "",
+      ]);
+    });
+    downloadCsv(`trace-${result.trace_id || "hops"}-hops.csv`, rows);
+  }
+
+  function downloadCsv(filename, rows) {
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function _traceDirectionLabel(value) {
+    return {
+      a_to_b: "A to B",
+      b_to_a: "B to A",
+      bidirectional: "Bidirectional",
+      unknown: "Unknown",
+    }[value || "unknown"] || "Unknown";
+  }
+
   document.addEventListener("click", (e) => {
     if (!ctxMenu.contains(e.target)) hideCtxMenu();
     if (!searchResults.contains(e.target) && e.target !== searchInput) searchResults.style.display = "none";
@@ -937,78 +1273,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  async function _traceSignal(startDeviceId, startPort, startSignal = 1) {
-    const tracedIds = new Set();
-    const queue = [{ deviceId: startDeviceId, portName: startPort, signal: startSignal }];
-    const visited = new Set();
-    while (queue.length > 0) {
-      const { deviceId, portName, signal } = queue.shift();
-      const logicalPort = _logicalPortName(portName);
-      const key = `${deviceId}:${logicalPort}:${signal}`;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      let data;
-      try {
-        const res = await fetch(`/api/plugins/innovace-fibre/trace/device/${deviceId}/?port=${encodeURIComponent(logicalPort)}&signal=${signal}`, {
-          headers: { "X-CSRFToken": _csrf() },
-        });
-        if (!res.ok) continue;
-        data = await res.json();
-      } catch {
-        continue;
-      }
-      for (const branch of data.paths || []) {
-        if (!branch.length) {
-          _followCableFrom(deviceId, logicalPort, signal, tracedIds, queue);
-          continue;
-        }
-        const last = branch[branch.length - 1];
-        _followCableFrom(deviceId, last.to_port, last.to_signal, tracedIds, queue);
-      }
-    }
-    return tracedIds;
-  }
-
-  function _followCableFrom(deviceId, portName, signal, tracedIds, queue) {
-    for (const edge of mgr.edges) {
-      if (edge.srcNode.id === deviceId && _samePortName(edge.srcPort, portName) && _signalsCompatible(signal, edge.srcSignal)) {
-        tracedIds.add(edge.id);
-        queue.push({
-          deviceId: edge.tgtNode.id,
-          portName: edge.tgtPort,
-          signal: _nextCableSignal(signal, edge.tgtSignal),
-        });
-      } else if (edge.tgtNode.id === deviceId && _samePortName(edge.tgtPort, portName) && _signalsCompatible(signal, edge.tgtSignal)) {
-        tracedIds.add(edge.id);
-        queue.push({
-          deviceId: edge.srcNode.id,
-          portName: edge.srcPort,
-          signal: _nextCableSignal(signal, edge.srcSignal),
-        });
-      }
-    }
-  }
-
-  function _signalsCompatible(routeSignal, cableSignal) {
-    const route = Math.max(1, parseInt(routeSignal || "1", 10) || 1);
-    const cable = Math.max(1, parseInt(cableSignal || "1", 10) || 1);
-    return route === 1 || cable === 1 || route === cable;
-  }
-
-  function _nextCableSignal(routeSignal, cableSignal) {
-    const route = Math.max(1, parseInt(routeSignal || "1", 10) || 1);
-    const cable = Math.max(1, parseInt(cableSignal || "1", 10) || 1);
-    return cable > 1 ? cable : route;
-  }
-
-  function _samePortName(a, b) {
-    return _logicalPortName(a) === _logicalPortName(b);
-  }
-
-  function _logicalPortName(name) {
-    return String(name || "").replace(/_(front|rear)$/i, "");
-  }
-
   function renderDetail(node) {
     if (!node) {
       detail.classList.add("topo-detail-hidden");
@@ -1017,6 +1281,7 @@ document.addEventListener("DOMContentLoaded", () => {
     detailTitle.textContent = node.label;
     const ports = node.ports || [];
     const grouped = _groupPorts(node, ports);
+    const connectionIndex = buildPortConnectionIndex();
     let html = [
       row("Manufacturer", node.manufacturer),
       row("Device type", node.deviceType),
@@ -1037,6 +1302,9 @@ document.addEventListener("DOMContentLoaded", () => {
       group.ports.forEach((port, idx) => {
         const key = `${group.key}:${idx}`;
         const maxChannel = Math.max(1, port.channel_count || 1);
+        const connection = connectionForPort(connectionIndex, node, port);
+        const connected = !!connection;
+        const peer = connected ? oppositeEndpointLabel(connection.edge, connection.entryEnd) : "";
         const channel = `<select class="topo-channel-select" data-key="${key}">
           ${Array.from({ length: maxChannel }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("")}
         </select>`;
@@ -1045,14 +1313,18 @@ document.addEventListener("DOMContentLoaded", () => {
           connectState.active &&
           connectState.fromPort?.object_type === port.object_type &&
           connectState.fromPort?.id === port.id;
-        if (mgr.mode === "connect" && connectState.active && !sameSource) {
+        if (connected) {
+          btn = `<button class="topo-port-btn connected" disabled>Connected</button>
+            <button class="topo-port-trace-btn" data-key="${key}" title="Trace full path from this port">Trace</button>`;
+        } else if (mgr.mode === "connect" && connectState.active && !sameSource) {
           btn = `<button class="topo-port-btn select" data-key="${key}">Target</button>`;
         } else {
           btn = `<button class="topo-port-btn" data-key="${key}">${sameSource ? "Source" : mgr.mode === "connect" ? "Source" : "Connect"}</button>`;
         }
-        html += `<div class="topo-port-row" data-port="${_esc(port.name.toLowerCase())}">
+        html += `<div class="topo-port-row${connected ? " connected" : ""}" data-port="${_esc(`${port.name} ${peer}`.toLowerCase())}">
           <span class="topo-port-name">${_esc(port.name)}</span>
           <span class="topo-port-type">${_esc(port.type)}</span>
+          ${connected ? `<span class="topo-port-status" title="${_esc(peer)}">to ${_esc(_short(peer, 24))}</span>` : ""}
           ${maxChannel > 1 ? channel : `<input type="hidden" class="topo-channel-select" data-key="${key}" value="1">`}
           ${btn}
         </div>`;
@@ -1065,7 +1337,14 @@ document.addEventListener("DOMContentLoaded", () => {
     detail.classList.remove("topo-detail-hidden");
 
     const portByKey = new Map();
+    const connectionByKey = new Map();
     grouped.forEach((group) => group.ports.forEach((port, idx) => portByKey.set(`${group.key}:${idx}`, port)));
+    grouped.forEach((group) => {
+      group.ports.forEach((port, idx) => {
+        const connection = connectionForPort(connectionIndex, node, port);
+        if (connection) connectionByKey.set(`${group.key}:${idx}`, connection);
+      });
+    });
 
     detailBody.querySelector("#btn-toggle-node")?.addEventListener("click", () => {
       node.collapsed = !node.collapsed;
@@ -1083,6 +1362,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     detailBody.querySelectorAll(".topo-port-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
+        if (btn.disabled) return;
         const port = portByKey.get(btn.dataset.key);
         const channelInput = detailBody.querySelector(`.topo-channel-select[data-key="${btn.dataset.key}"]`);
         const channel = Math.max(1, parseInt(channelInput?.value || "1", 10) || 1);
@@ -1092,6 +1372,14 @@ document.addEventListener("DOMContentLoaded", () => {
           enterConnectMode(node, port, channel);
           renderDetail(node);
         }
+      });
+    });
+
+    detailBody.querySelectorAll(".topo-port-trace-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const connection = connectionByKey.get(btn.dataset.key);
+        if (!connection) return;
+        runFullTrace(connection.edge, connection.entryEnd);
       });
     });
   }
@@ -1280,7 +1568,24 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function _esc(s) {
-    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function _plainError(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    if (text.startsWith("<")) {
+      const title = text.match(/<title>(.*?)<\/title>/is)?.[1]
+        || text.match(/<h1[^>]*>(.*?)<\/h1>/is)?.[1]
+        || "";
+      return title.replace(/\s+/g, " ").trim() || "The trace request timed out before NetBox returned JSON.";
+    }
+    return text;
   }
 
   function _short(s, max = 14) {
@@ -1289,7 +1594,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   new BarcodeScanner({
-    onDeviceMatch(data) {
+    async onDeviceMatch(data) {
       const node = mgr.nodes.get(data.id);
       if (!node) {
         BarcodeScanner.showToast(`Device "${data.name}" is not visible in the current topology view. Try applying the correct site filter.`, "warning");
@@ -1302,22 +1607,37 @@ document.addEventListener("DOMContentLoaded", () => {
       const edgeIds = new Set(connectedEdges.map((e) => e.id));
       mgr.highlightEdges(edgeIds);
       btnClearTrace.style.display = edgeIds.size > 0 ? "" : "none";
-      const portsTraced = new Set();
-      for (const edge of connectedEdges) {
-        const portName = edge.srcNode?.id === data.id ? edge.srcPort : edge.tgtPort;
-        const signal = edge.srcNode?.id === data.id ? edge.srcSignal : edge.tgtSignal;
-        if (portName && !portsTraced.has(portName)) {
-          portsTraced.add(portName);
-          _traceSignal(data.id, portName, signal || 1).then((ids) => {
-            ids.forEach((id) => edgeIds.add(id));
-            mgr.highlightEdges(edgeIds);
-          });
+      if (connectedEdges.length) {
+        detailTitle.textContent = `Tracing ${node.label}`;
+        detailBody.innerHTML = `<div class="topo-trace-loading">Tracing ${connectedEdges.length} connected cable${connectedEdges.length === 1 ? "" : "s"}...</div>`;
+        detail.classList.remove("topo-detail-hidden");
+      }
+      try {
+        const results = await Promise.all(
+          connectedEdges.map((edge) => fetchFullTrace(edge, edge.srcNode?.id === data.id ? "a" : "b", false).catch((err) => ({ error: err.message, edge }))),
+        );
+        results.forEach((result) => {
+          (result.highlight_cable_ids || []).forEach((id) => edgeIds.add(id));
+        });
+        mgr.highlightEdges(edgeIds);
+        btnClearTrace.style.display = edgeIds.size > 0 ? "" : "none";
+        if (connectedEdges.length) {
+          const failures = results.filter((result) => result.error);
+          const branchCount = results.reduce((total, result) => total + (result.branches?.length || 0), 0);
+          detailBody.innerHTML = `
+            ${row("Connected cables", String(connectedEdges.length))}
+            ${row("Trace branches", String(branchCount))}
+            ${failures.length ? `<div class="topo-trace-warning">${failures.map((item) => _esc(item.error)).join("<br>")}</div>` : ""}
+            <div class="topo-trace-note">Device barcode tracing uses the backend full-trace engine from each visible cable on this device.</div>
+          `;
         }
+      } catch (err) {
+        detailBody.innerHTML = `<div class="topo-trace-warning">${_esc(err.message)}</div>`;
       }
       BarcodeScanner.showToast(`Found: ${data.name} - ${data.site || ""}`, "success");
     },
 
-    onCableMatch(data) {
+    async onCableMatch(data) {
       const edgeId = data.id;
       const matchedEdge = mgr.edges.find((e) => e.id === edgeId);
       if (!matchedEdge) {
@@ -1329,29 +1649,8 @@ document.addEventListener("DOMContentLoaded", () => {
       mgr.selectNode(matchedEdge.srcNode, true);
       btnClearTrace.style.display = "";
       const matchedEnd = data.matched_end;
-      const terms = matchedEnd === "a" ? data.a_terminations : data.b_terminations;
-      if (!terms?.length) {
-        BarcodeScanner.showToast(`Tracing cable #${edgeId}`, "success");
-        return;
-      }
-      const startDeviceId = terms[0].device_id;
-      const startPort = terms[0].port_name;
-      if (data.signals.length <= 1) {
-        _traceSignal(startDeviceId, startPort, 1).then((ids) => {
-          ids.add(edgeId);
-          mgr.highlightEdges(ids);
-        });
-        BarcodeScanner.showToast(`Tracing cable${data.label ? ` "${data.label}"` : ` #${edgeId}`}`, "success");
-      } else {
-        showSignalModal(data, (selectedSignals) => {
-          const allIds = new Set([edgeId]);
-          Promise.all(selectedSignals.map((sig) => _traceSignal(startDeviceId, startPort, sig))).then((results) => {
-            results.forEach((ids) => ids.forEach((id) => allIds.add(id)));
-            mgr.highlightEdges(allIds);
-            btnClearTrace.style.display = "";
-          });
-        });
-      }
+      await runFullTrace(matchedEdge, matchedEnd === "b" ? "b" : "a", false);
+      BarcodeScanner.showToast(`Tracing cable${data.label ? ` "${data.label}"` : ` #${edgeId}`} with saved channel fields`, "success");
     },
   });
 

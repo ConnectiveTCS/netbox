@@ -1,7 +1,9 @@
 import csv
 import io
 
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -114,6 +116,7 @@ class DeviceSignalRoutingView(View):
         device = get_object_or_404(Device, pk=pk)
         overrides = DeviceSignalRouting.objects.filter(device=device)
         type_defaults = SignalRouting.objects.filter(device_type=device.device_type)
+        similar_devices = Device.objects.filter(device_type=device.device_type).exclude(pk=device.pk)
         form = DeviceSignalRoutingForm()
         return render(
             request,
@@ -122,6 +125,10 @@ class DeviceSignalRoutingView(View):
                 'device': device,
                 'overrides': overrides,
                 'type_defaults': type_defaults,
+                'similar_device_count': similar_devices.count(),
+                'similar_devices_with_overrides_count': similar_devices.filter(
+                    innovace_signal_routings__isnull=False
+                ).distinct().count(),
                 'form': form,
             },
         )
@@ -133,6 +140,86 @@ class DeviceSignalRoutingView(View):
             routing = form.save(commit=False)
             routing.device = device
             routing.save()
+        return HttpResponseRedirect(
+            reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
+        )
+
+
+class DeviceSignalRoutingLinkToTypeView(View):
+    """Replaces a device type's default signal routings with one device's overrides."""
+
+    def post(self, request, pk):
+        device = get_object_or_404(Device, pk=pk)
+        overrides = list(DeviceSignalRouting.objects.filter(device=device))
+
+        if not overrides:
+            messages.warning(request, 'Add at least one override before linking it to the device type.')
+            return HttpResponseRedirect(
+                reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
+            )
+
+        with transaction.atomic():
+            SignalRouting.objects.filter(device_type=device.device_type).delete()
+            SignalRouting.objects.bulk_create([
+                SignalRouting(
+                    device_type=device.device_type,
+                    from_port_name=route.from_port_name,
+                    from_signal=route.from_signal,
+                    to_port_name=route.to_port_name,
+                    to_signal=route.to_signal,
+                    is_bidirectional=route.is_bidirectional,
+                )
+                for route in overrides
+            ])
+
+        messages.success(
+            request,
+            f'Linked {len(overrides)} override(s) from {device} to device type {device.device_type}.',
+        )
+        return HttpResponseRedirect(
+            reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
+        )
+
+
+class DeviceSignalRoutingCloneToSimilarView(View):
+    """Copies a device's signal routing overrides to other devices of the same device type."""
+
+    def post(self, request, pk):
+        device = get_object_or_404(Device, pk=pk)
+        overrides = list(DeviceSignalRouting.objects.filter(device=device))
+        similar_devices = list(Device.objects.filter(device_type=device.device_type).exclude(pk=device.pk))
+
+        if not overrides:
+            messages.warning(request, 'Add at least one override before cloning it to similar devices.')
+            return HttpResponseRedirect(
+                reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
+            )
+
+        if not similar_devices:
+            messages.info(request, f'No other devices use device type {device.device_type}.')
+            return HttpResponseRedirect(
+                reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
+            )
+
+        with transaction.atomic():
+            DeviceSignalRouting.objects.filter(device__in=similar_devices).delete()
+            DeviceSignalRouting.objects.bulk_create([
+                DeviceSignalRouting(
+                    device=target_device,
+                    from_port_name=route.from_port_name,
+                    from_signal=route.from_signal,
+                    to_port_name=route.to_port_name,
+                    to_signal=route.to_signal,
+                    is_bidirectional=route.is_bidirectional,
+                )
+                for target_device in similar_devices
+                for route in overrides
+            ])
+
+        messages.success(
+            request,
+            f'Cloned {len(overrides)} override(s) to {len(similar_devices)} similar device(s).',
+        )
         return HttpResponseRedirect(
             reverse('plugins:netbox_innovace_fibre:device_signal_routing', kwargs={'pk': pk})
         )

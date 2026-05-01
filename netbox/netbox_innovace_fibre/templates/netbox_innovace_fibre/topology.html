@@ -91,7 +91,7 @@
 
 {% block javascript %}
 {{ block.super }}
-<script type="module" src="{% static 'netbox_innovace_fibre/js/topology.js' %}?v=20260501-workspace-trace-2"></script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/topology.js' %}?v=20260501-port-trace-2"></script>
 {% endblock %}
 
 {% block head %}
@@ -267,6 +267,8 @@
   width: 100%;
   height: 100%;
   cursor: default;
+  touch-action: none;
+  user-select: none;
 }
 
 /* ── Loading / empty states ────────────────────────── */
@@ -326,8 +328,17 @@
   padding: 3px 0;
   border-bottom: 1px solid #1a1e2a;
 }
-.topo-port-name { flex: 1; font-family: monospace; font-size: 11px; color: #c9d1e0; }
+.topo-port-name { flex: 1; min-width: 0; font-family: monospace; font-size: 11px; color: #c9d1e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topo-port-type { font-size: 10px; color: #5c6880; min-width: 32px; }
+.topo-port-row.connected .topo-port-name { color: #e2e8f0; }
+.topo-port-status {
+  max-width: 108px;
+  color: #7dd3fc;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .topo-port-btn {
   background: #1a1e2a;
   border: 1px solid #2a3045;
@@ -341,6 +352,29 @@
 .topo-port-btn:hover { background: #4a9eff; color: #fff; }
 .topo-port-btn.select { color: #2ecc71; border-color: #27ae60; }
 .topo-port-btn.select:hover { background: #27ae60; color: #fff; }
+.topo-port-btn.connected,
+.topo-port-btn.connected:hover,
+.topo-port-btn:disabled {
+  background: #14202a;
+  border-color: #1f4154;
+  color: #7dd3fc;
+  cursor: default;
+}
+.topo-port-trace-btn {
+  background: #0e2a3a;
+  border: 1px solid #256b87;
+  border-radius: 3px;
+  color: #bae6fd;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.topo-port-trace-btn:hover {
+  background: #15516d;
+  border-color: #7dd3fc;
+  color: #fff;
+}
 
 /* ── Detail panel ──────────────────────────────────── */
 #topo-detail {
@@ -482,6 +516,82 @@
   padding: 1px 2px;
 }
 
+/* ── Trace panel ───────────────────────────────────── */
+.topo-trace-loading,
+.topo-trace-note,
+.topo-trace-warning {
+  border-radius: 6px;
+  padding: 7px 9px;
+  line-height: 1.45;
+}
+
+.topo-trace-loading {
+  background: rgba(74,158,255,0.08);
+  color: #9bc7ff;
+  border: 1px solid rgba(74,158,255,0.22);
+}
+
+.topo-trace-note {
+  margin-top: 9px;
+  background: rgba(115,130,158,0.08);
+  color: #7f8daa;
+  border: 1px solid rgba(115,130,158,0.16);
+}
+
+.topo-trace-warning {
+  margin-top: 8px;
+  background: rgba(255,138,138,0.08);
+  color: #ffb4b4;
+  border: 1px solid rgba(255,138,138,0.22);
+}
+
+.topo-trace-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  color: #8da0bd;
+  cursor: pointer;
+}
+
+.topo-trace-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #4a9eff;
+}
+
+.topo-trace-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.topo-trace-branch {
+  border-top: 1px solid #1e2330;
+  padding-top: 8px;
+}
+
+.topo-trace-hop {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 0;
+  border-bottom: 1px solid #1a1e2a;
+}
+
+.topo-trace-hop strong {
+  color: #c9d1e0;
+  font-size: 11px;
+}
+
+.topo-trace-hop span {
+  color: #7f8daa;
+  font-family: monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
 /* ── Clear-trace toolbar button ─────────────────────── */
 .topo-btn-trace {
   border-color: #7dd3fc44;
@@ -534,6 +644,36 @@
   border: none;
   border-top: 1px solid #1e2330;
   margin: 3px 4px;
+}
+
+@media (max-width: 720px) {
+  #topo-toolbar {
+    gap: 8px;
+  }
+
+  #topo-search-wrap {
+    order: 4;
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  #topo-controls {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  #topo-detail {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 8px;
+    width: auto;
+    max-height: 55vh;
+  }
+
+  #topo-detail-body {
+    max-height: calc(55vh - 48px);
+  }
 }
 </style>
 {% endblock head %}

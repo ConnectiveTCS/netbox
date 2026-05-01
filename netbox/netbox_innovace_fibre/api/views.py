@@ -18,7 +18,7 @@ from netbox_innovace_fibre.models import (
     DeviceSignalRouting, DeviceTypeSignalMeta, FloorPlanVersion,
     SignalRouting, TopologyLayoutVersion,
 )
-from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_for_device
+from netbox_innovace_fibre.tracer import trace_full_path_from_cable, trace_signal_path, trace_signal_path_for_device
 
 from .serializers import DeviceSignalRoutingSerializer, DeviceTypeSignalMetaSerializer, SignalRoutingSerializer
 
@@ -176,13 +176,25 @@ class TopologyDataAPIView(APIView):
                         'color': cable.color or '',
                         'source': a_dev.id,
                         'target': b_dev.id,
+                        'source_object_id': a_port.id,
+                        'source_object_type': _termination_object_type(a_port),
+                        'target_object_id': b_port.id,
+                        'target_object_type': _termination_object_type(b_port),
                         'source_port': a_port.name,
                         'target_port': b_port.name,
+                        'source_logical_port': _logical_trace_port_name(a_port.name),
+                        'target_logical_port': _logical_trace_port_name(b_port.name),
+                        'source_endpoint_label': f'{a_dev.name}:{a_port.name}',
+                        'target_endpoint_label': f'{b_dev.name}:{b_port.name}',
                         'source_signal_channel': _positive_int_or_one(
                             cable.custom_field_data.get('source_signal_channel')
                         ),
                         'target_signal_channel': _positive_int_or_one(
                             cable.custom_field_data.get('target_signal_channel')
+                        ),
+                        'trace_direction': (
+                            cable.custom_field_data.get('trace_direction')
+                            or 'unknown'
                         ),
                     })
 
@@ -194,6 +206,30 @@ class TopologyDataAPIView(APIView):
             'edges': edges,
             'filters': {'sites': all_sites, 'roles': all_roles},
         })
+
+
+class FullTraceAPIView(APIView):
+    """
+    POST {cable_id, entry_end, override_direction}
+    Returns a backend-authoritative multi-device trace graph.
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def post(self, request):
+        cable_id = request.data.get('cable_id')
+        if not cable_id:
+            return Response({'error': 'cable_id required'}, status=400)
+        try:
+            cable_id = int(cable_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'cable_id must be an integer'}, status=400)
+
+        result = trace_full_path_from_cable(
+            cable_id=cable_id,
+            entry_end=request.data.get('entry_end') or 'a',
+            override_direction=bool(request.data.get('override_direction')),
+        )
+        return Response(result)
 
 
 class TopologyLayoutAPIView(APIView):
@@ -648,6 +684,16 @@ def _serialise_topology_port(port, port_type, object_type):
         'owner_name': str(module) if module else '',
         'channel_count': _port_channel_count(port),
     }
+
+
+def _termination_object_type(port):
+    if isinstance(port, Interface):
+        return 'dcim.interface'
+    if isinstance(port, FrontPort):
+        return 'dcim.frontport'
+    if isinstance(port, RearPort):
+        return 'dcim.rearport'
+    return ''
 
 
 def _port_channel_count(port):

@@ -9,6 +9,7 @@ from .views import (
     DeviceSignalTraceAPIView,
     DeviceTypeSignalMetaViewSet,
     FloorPlanAPIView,
+    FullTraceAPIView,
     PortLayoutAPIView,
     PortLayoutListAPIView,
     Rack3DDataAPIView,
@@ -27,6 +28,7 @@ router.register('device-signal-routings', DeviceSignalRoutingViewSet)
 urlpatterns = [
     path('trace/device-type/<int:pk>/', SignalTraceAPIView.as_view(), name='signal-trace'),
     path('trace/device/<int:pk>/', DeviceSignalTraceAPIView.as_view(), name='device-signal-trace'),
+    path('trace/full/', FullTraceAPIView.as_view(), name='full-trace'),
     path('topology/', TopologyDataAPIView.as_view(), name='topology-data'),
     path('topology-layout/', TopologyLayoutAPIView.as_view(), name='topology-layout'),
     path('racks/', RackListAPIView.as_view(), name='rack-list'),

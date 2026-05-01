@@ -16,6 +16,7 @@ class Command(BaseCommand):
         self._ensure_inter_rack_exit_side()
         self._ensure_cable_trunk_group()
         self._ensure_cable_signal_channels()
+        self._ensure_cable_trace_direction()
         self._ensure_device_barcode()
         self._ensure_cable_barcode_a()
         self._ensure_cable_barcode_b()
@@ -176,6 +177,44 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f'Created custom field: {name} (Cable)'))
             else:
                 self.stdout.write(f'Custom field {name} already exists — skipped.')
+
+    def _ensure_cable_trace_direction(self):
+        ct = ContentType.objects.get(app_label='dcim', model='cable')
+        choice_set, cs_created = CustomFieldChoiceSet.objects.get_or_create(
+            name='iff_trace_direction',
+            defaults={
+                'extra_choices': [
+                    ['unknown', 'Unknown'],
+                    ['a_to_b', 'A to B'],
+                    ['b_to_a', 'B to A'],
+                    ['bidirectional', 'Bidirectional'],
+                ],
+                'description': 'Innovace topology: preferred signal trace direction for this cable',
+            },
+        )
+        if cs_created:
+            self.stdout.write(self.style.SUCCESS('Created choice set: iff_trace_direction'))
+
+        cf, created = CustomField.objects.get_or_create(
+            name='trace_direction',
+            defaults={
+                'type': CustomFieldTypeChoices.TYPE_SELECT,
+                'label': 'Trace Direction',
+                'choice_set': choice_set,
+                'required': False,
+                'default': 'unknown',
+                'description': (
+                    'Preferred signal trace direction for topology tracing. '
+                    'Strict full trace follows this direction unless the user overrides it.'
+                ),
+                'group_name': 'Innovace Cable Viz',
+            },
+        )
+        if created:
+            cf.object_types.set([ct])
+            self.stdout.write(self.style.SUCCESS('Created custom field: trace_direction (Cable)'))
+        else:
+            self.stdout.write('Custom field trace_direction already exists — skipped.')
 
     def _ensure_cable_barcode_a(self):
         ct = ContentType.objects.get(app_label='dcim', model='cable')
