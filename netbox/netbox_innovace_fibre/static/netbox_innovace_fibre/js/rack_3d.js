@@ -1154,12 +1154,14 @@ class RackScene {
   ) {
     const moduleBays = Array.isArray(dev.module_bays) ? dev.module_bays : [];
     const deviceBays = Array.isArray(dev.device_bays) ? dev.device_bays : [];
-    if (!dev.patch_enclosure || (!moduleBays.length && !deviceBays.length))
-      return;
-
     const deviceHasContent = deviceBays.some(
       (b) => !!b.device_image || !!b.occupied,
     );
+    const moduleHasContent = moduleBays.some(
+      (b) => !!b.module_image || !!b.module_id || !!b.module_name,
+    );
+    if (!deviceHasContent && (!dev.patch_enclosure || !moduleHasContent))
+      return;
 
     // Prefer device bays when they are populated (e.g. installed splitter devices in S1..S8).
     const baysToRender = deviceHasContent ? deviceBays : moduleBays;
@@ -1239,7 +1241,11 @@ class RackScene {
         const tex = loader.load(tileImage);
         tex.colorSpace = THREE.SRGBColorSpace;
         this._textures.push(tex);
-        tileMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+        tileMat = new THREE.MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          side: THREE.DoubleSide,
+        });
       } else {
         tileMat = new THREE.MeshStandardMaterial({
           color: hashColor(
@@ -1252,6 +1258,7 @@ class RackScene {
           ),
           metalness: 0.25,
           roughness: 0.65,
+          side: THREE.DoubleSide,
         });
       }
 

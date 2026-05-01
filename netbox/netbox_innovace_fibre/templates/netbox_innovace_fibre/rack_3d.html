@@ -928,9 +928,9 @@
         <option value="">Select rack…</option>
       </select>
       <div id="r3d-face-toggle">
-        <button class="r3d-face-btn active" data-face="front">Front</button>
+        <button class="r3d-face-btn" data-face="front">Front</button>
         <button class="r3d-face-btn" data-face="rear">Rear</button>
-        <button class="r3d-face-btn" data-face="both">Both</button>
+        <button class="r3d-face-btn active" data-face="both">Both</button>
       </div>
       <input id="r3d-search" type="search" placeholder="Filter devices…"
         title="Filter devices by name, role, or type">
@@ -1199,5 +1199,5 @@
 
 {% block javascript %}
 {{ block.super }}
-<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-rear-face"></script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-bay-overlays-2"></script>
 {% endblock %}
