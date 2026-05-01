@@ -833,6 +833,40 @@ document.addEventListener("DOMContentLoaded", () => {
       btnClearTrace.style.display = "";
     });
 
+  document.getElementById("ctx-disconnect").addEventListener("click", async () => {
+    if (!ctxEdge) return;
+
+    const edge = ctxEdge;
+    const srcLabel = `${edge.srcNode.label}:${edge.srcPort}`;
+    const tgtLabel = `${edge.tgtNode.label}:${edge.tgtPort}`;
+    hideCtxMenu();
+
+    if (!confirm(`Disconnect cable between ${srcLabel} and ${tgtLabel}?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/dcim/cables/${edge.id}/`, {
+        method: "DELETE",
+        headers: { "X-CSRFToken": _csrf() },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const msgs = Object.entries(err)
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+          .join("\n");
+        alert(`Could not disconnect cable:\n${msgs || res.statusText}`);
+        return;
+      }
+      mgr.clearTrace();
+      btnClearTrace.style.display = "none";
+      detail.classList.add("topo-detail-hidden");
+      await loadTopology();
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+    }
+  });
+
   document.getElementById("ctx-clear-trace").addEventListener("click", () => {
     hideCtxMenu();
     mgr.clearTrace();

@@ -68,6 +68,8 @@
     <button class="ctx-item" id="ctx-trace-ab"></button>
     <button class="ctx-item" id="ctx-trace-ba"></button>
     <div class="ctx-sep"></div>
+    <button class="ctx-item ctx-item-danger" id="ctx-disconnect">Disconnect Cable</button>
+    <div class="ctx-sep"></div>
     <button class="ctx-item" id="ctx-clear-trace">✕ Clear Trace</button>
   </div>
 
@@ -76,7 +78,7 @@
 
 {% block javascript %}
 {{ block.super }}
-<script type="module" src="{% static 'netbox_innovace_fibre/js/topology.js' %}"></script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/topology.js' %}?v=20260501-1"></script>
 {% endblock %}
 
 {% block head %}
@@ -347,6 +349,8 @@
   white-space: nowrap;
 }
 .ctx-item:hover { background: #1e2742; color: #fff; }
+.ctx-item-danger { color: #ff8a8a; }
+.ctx-item-danger:hover { background: #3a1c24; color: #ffd0d0; }
 
 .ctx-sep {
   border: none;
