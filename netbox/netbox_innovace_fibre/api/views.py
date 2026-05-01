@@ -14,7 +14,10 @@ from dcim.models import (
     FrontPort, Interface, ModuleBay, Rack, RearPort, Site,
 )
 from dcim.utils import update_interface_bridges
-from netbox_innovace_fibre.models import DeviceSignalRouting, DeviceTypeSignalMeta, FloorPlanVersion, SignalRouting
+from netbox_innovace_fibre.models import (
+    DeviceSignalRouting, DeviceTypeSignalMeta, FloorPlanVersion,
+    SignalRouting, TopologyLayoutVersion,
+)
 from netbox_innovace_fibre.tracer import trace_signal_path, trace_signal_path_for_device
 
 from .serializers import DeviceSignalRoutingSerializer, DeviceTypeSignalMetaSerializer, SignalRoutingSerializer
@@ -28,6 +31,10 @@ def _safe_file_url(file_field):
         return file_field.url
     except ValueError:
         return None
+
+
+def _logical_trace_port_name(port_name):
+    return re.sub(r'_(front|rear)$', '', port_name or '', flags=re.IGNORECASE)
 
 
 class DeviceTypeSignalMetaViewSet(ModelViewSet):
@@ -58,7 +65,7 @@ class DeviceSignalTraceAPIView(APIView):
     def get(self, request, pk):
         from dcim.models import Device
         device = Device.objects.get(pk=pk)
-        port = request.GET.get('port')
+        port = _logical_trace_port_name(request.GET.get('port'))
         signal = int(request.GET.get('signal', '1'))
         paths = trace_signal_path_for_device(device=device, port_name=port, signal=signal)
         has_overrides = DeviceSignalRouting.objects.filter(device=device).exists()
@@ -77,7 +84,7 @@ class SignalTraceAPIView(APIView):
     def get(self, request, pk):
         from dcim.models import DeviceType
         device_type = DeviceType.objects.get(pk=pk)
-        port = request.GET.get('port')
+        port = _logical_trace_port_name(request.GET.get('port'))
         signal = int(request.GET.get('signal', '1'))
         paths = trace_signal_path(device_type=device_type, port_name=port, signal=signal)
         return Response({
@@ -109,11 +116,13 @@ class TopologyDataAPIView(APIView):
         # All devices, regardless of port type
         devices_qs = (
             Device.objects
-            .select_related('device_type__manufacturer', 'role', 'site')
+            .select_related('device_type__manufacturer', 'role', 'site', 'rack', 'parent_bay__device')
             .prefetch_related(
                 'interfaces',
                 'frontports',
                 'rearports',
+                'devicebays__installed_device',
+                'modulebays__installed_module__module_type',
                 'device_type__interfacetemplates',
                 'device_type__frontporttemplates',
                 'device_type__rearporttemplates',
@@ -169,6 +178,12 @@ class TopologyDataAPIView(APIView):
                         'target': b_dev.id,
                         'source_port': a_port.name,
                         'target_port': b_port.name,
+                        'source_signal_channel': _positive_int_or_one(
+                            cable.custom_field_data.get('source_signal_channel')
+                        ),
+                        'target_signal_channel': _positive_int_or_one(
+                            cable.custom_field_data.get('target_signal_channel')
+                        ),
                     })
 
         all_sites = list(Site.objects.values('id', 'name').order_by('name'))
@@ -179,6 +194,49 @@ class TopologyDataAPIView(APIView):
             'edges': edges,
             'filters': {'sites': all_sites, 'roles': all_roles},
         })
+
+
+class TopologyLayoutAPIView(APIView):
+    """
+    GET  ?site_id=<id>  — return latest shared topology layout for that site.
+    POST {site_id, config} — create a new shared topology layout version.
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request):
+        site_id = request.GET.get('site_id')
+        if not site_id:
+            return Response({'config': {}, 'version_id': None})
+        version = TopologyLayoutVersion.objects.filter(site_id=site_id).first()
+        return Response({
+            'config': version.config if version else {},
+            'version_id': version.pk if version else None,
+            'created_at': version.created_at if version else None,
+        })
+
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=403)
+        if not (
+            request.user.has_perm('netbox_innovace_fibre.add_topologylayoutversion')
+            or request.user.has_perm('netbox_innovace_fibre.change_topologylayoutversion')
+        ):
+            return Response({'error': 'Permission denied'}, status=403)
+
+        site_id = request.data.get('site_id')
+        config = request.data.get('config', {})
+        if not site_id:
+            return Response({'error': 'site_id required'}, status=400)
+        if not isinstance(config, dict):
+            return Response({'error': 'config must be an object'}, status=400)
+
+        site = get_object_or_404(Site, pk=site_id)
+        version = TopologyLayoutVersion.objects.create(
+            site=site,
+            created_by=request.user,
+            config=config,
+        )
+        return Response({'version_id': version.pk, 'created_at': version.created_at}, status=201)
 
 
 class RackListAPIView(APIView):
@@ -528,12 +586,37 @@ def _ensure_template_components(device, template_owner, module=None):
 def _serialise_device(dev):
     ports = []
     for p in dev.interfaces.all():
-        ports.append({'id': p.id, 'name': p.name, 'type': 'iface', 'object_type': 'dcim.interface'})
+        ports.append(_serialise_topology_port(p, 'iface', 'dcim.interface'))
     for p in dev.frontports.all():
-        ports.append({'id': p.id, 'name': p.name, 'type': 'front', 'object_type': 'dcim.frontport'})
+        ports.append(_serialise_topology_port(p, 'front', 'dcim.frontport'))
     for p in dev.rearports.all():
-        ports.append({'id': p.id, 'name': p.name, 'type': 'rear', 'object_type': 'dcim.rearport'})
+        ports.append(_serialise_topology_port(p, 'rear', 'dcim.rearport'))
     ports.sort(key=lambda p: p['name'])
+    child_devices = []
+    for bay in dev.devicebays.all():
+        installed = bay.installed_device if bay.installed_device_id else None
+        if not installed:
+            continue
+        child_devices.append({
+            'id': installed.pk,
+            'name': installed.name or f'Device {installed.pk}',
+            'bay_id': bay.pk,
+            'bay_name': bay.name,
+            'url': f'/dcim/devices/{installed.pk}/',
+            'device_type': installed.device_type.model if installed.device_type_id else '',
+        })
+    modules = []
+    for bay in dev.modulebays.all():
+        module = bay.installed_module if bay.installed_module_id else None
+        if not module:
+            continue
+        modules.append({
+            'id': module.pk,
+            'name': str(module),
+            'bay_id': bay.pk,
+            'bay_name': bay.name,
+            'module_type': module.module_type.model if module.module_type_id else '',
+        })
     return {
         'id': dev.id,
         'label': dev.name or f'Device {dev.id}',
@@ -541,9 +624,45 @@ def _serialise_device(dev):
         'manufacturer': dev.device_type.manufacturer.name if dev.device_type_id else '',
         'device_type': dev.device_type.model if dev.device_type_id else '',
         'site': dev.site.name if dev.site_id else '',
+        'site_id': dev.site_id,
+        'rack_id': dev.rack_id,
+        'rack': dev.rack.name if dev.rack_id else '',
         'role': dev.role.name if dev.role_id else '',
+        'parent_id': dev.parent_bay.device_id if getattr(dev, 'parent_bay_id', None) else None,
+        'parent_bay': dev.parent_bay.name if getattr(dev, 'parent_bay_id', None) else '',
+        'children': sorted(child_devices, key=lambda item: item['name']),
+        'modules': sorted(modules, key=lambda item: item['name']),
         'ports': ports,
     }
+
+
+def _serialise_topology_port(port, port_type, object_type):
+    module = getattr(port, 'module', None)
+    return {
+        'id': port.id,
+        'name': port.name,
+        'type': port_type,
+        'object_type': object_type,
+        'owner_kind': 'module' if module else 'device',
+        'owner_id': module.pk if module else None,
+        'owner_name': str(module) if module else '',
+        'channel_count': _port_channel_count(port),
+    }
+
+
+def _port_channel_count(port):
+    count = getattr(port, 'positions', None) or getattr(port, 'rear_port_position_count', None) or 1
+    try:
+        return max(1, int(count))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _positive_int_or_one(value):
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _is_patch_enclosure_role(role_name, role_slug):

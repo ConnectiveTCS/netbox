@@ -164,3 +164,34 @@ class FloorPlanVersion(models.Model):
 
     def __str__(self):
         return f"FloorPlan({self.site}, {self.created_at})"
+
+
+class TopologyLayoutVersion(models.Model):
+    """
+    Versioned 2D topology layout for a site.
+    Each save creates a new row; the latest record for a site is active.
+    """
+    objects = RestrictedQuerySet.as_manager()
+
+    site = models.ForeignKey(
+        to=Site,
+        on_delete=models.CASCADE,
+        related_name='innovace_topology_layouts',
+    )
+    created_by = models.ForeignKey(
+        to=get_user_model(),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    config = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = _('topology layout version')
+        verbose_name_plural = _('topology layout versions')
+
+    def __str__(self):
+        return f"TopologyLayout({self.site}, {self.created_at})"

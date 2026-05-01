@@ -16,6 +16,7 @@ from .views import (
     SignalRoutingViewSet,
     SignalTraceAPIView,
     TopologyDataAPIView,
+    TopologyLayoutAPIView,
 )
 
 router = DefaultRouter()
@@ -27,6 +28,7 @@ urlpatterns = [
     path('trace/device-type/<int:pk>/', SignalTraceAPIView.as_view(), name='signal-trace'),
     path('trace/device/<int:pk>/', DeviceSignalTraceAPIView.as_view(), name='device-signal-trace'),
     path('topology/', TopologyDataAPIView.as_view(), name='topology-data'),
+    path('topology-layout/', TopologyLayoutAPIView.as_view(), name='topology-layout'),
     path('racks/', RackListAPIView.as_view(), name='rack-list'),
     path('racks/<int:pk>/3d-data/', Rack3DDataAPIView.as_view(), name='rack-3d-data'),
     path('devices/<int:pk>/bay-layout/', BayLayoutAPIView.as_view(), name='bay-layout'),

@@ -15,6 +15,7 @@ class Command(BaseCommand):
         self._ensure_cable_exit_side()
         self._ensure_inter_rack_exit_side()
         self._ensure_cable_trunk_group()
+        self._ensure_cable_signal_channels()
         self._ensure_device_barcode()
         self._ensure_cable_barcode_a()
         self._ensure_cable_barcode_b()
@@ -144,6 +145,37 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS('Created custom field: trunk_group (Cable)'))
         else:
             self.stdout.write('Custom field trunk_group already exists — skipped.')
+
+    def _ensure_cable_signal_channels(self):
+        ct = ContentType.objects.get(app_label='dcim', model='cable')
+        for name, label, description in (
+            (
+                'source_signal_channel',
+                'Source Signal Channel',
+                'Innovace topology: selected signal/channel at the cable A/source end.',
+            ),
+            (
+                'target_signal_channel',
+                'Target Signal Channel',
+                'Innovace topology: selected signal/channel at the cable B/target end.',
+            ),
+        ):
+            cf, created = CustomField.objects.get_or_create(
+                name=name,
+                defaults={
+                    'type': CustomFieldTypeChoices.TYPE_INTEGER,
+                    'label': label,
+                    'description': description,
+                    'required': False,
+                    'default': 1,
+                    'group_name': 'Innovace Cable Viz',
+                },
+            )
+            if created:
+                cf.object_types.set([ct])
+                self.stdout.write(self.style.SUCCESS(f'Created custom field: {name} (Cable)'))
+            else:
+                self.stdout.write(f'Custom field {name} already exists — skipped.')
 
     def _ensure_cable_barcode_a(self):
         ct = ContentType.objects.get(app_label='dcim', model='cable')

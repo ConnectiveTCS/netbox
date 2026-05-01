@@ -22,20 +22,33 @@
       <button id="btn-apply-filter" class="topo-btn">Apply</button>
     </div>
 
+    <div id="topo-mode-switch" aria-label="Topology mode">
+      <button class="topo-btn topo-mode-btn active" data-mode="view" title="View and trace topology">View</button>
+      <button class="topo-btn topo-mode-btn" data-mode="arrange" title="Move devices and save shared layout">Arrange</button>
+      <button class="topo-btn topo-mode-btn" data-mode="connect" title="Create cable connections">Connect</button>
+    </div>
+
+    <div id="topo-search-wrap">
+      <input id="topo-search" type="search" placeholder="Search devices, cables, ports..." autocomplete="off">
+      <div id="topo-search-results"></div>
+    </div>
+
     <div id="topo-controls">
       <button id="btn-zoom-in"  class="topo-btn" title="Zoom in">+</button>
       <button id="btn-zoom-out" class="topo-btn" title="Zoom out">−</button>
       <button id="btn-fit"      class="topo-btn" title="Fit view (double-click canvas)">⊡ Fit</button>
       <button id="btn-reset-layout" class="topo-btn" title="Reset node positions">↺ Reset</button>
+      <button id="btn-save-layout" class="topo-btn" title="Save shared site topology layout">Save Layout</button>
       <button id="btn-clear-trace"  class="topo-btn topo-btn-trace" title="Clear signal trace" style="display:none">✕ Trace</button>
     </div>
+    <span id="topo-save-status"></span>
   </div>
 
   {# ── Connect-mode banner ───────────────────────────────────── #}
   <div id="topo-connect-bar" style="display:none">
     <i class="mdi mdi-transit-connection"></i>
     Connecting: <strong id="topo-connect-label"></strong>
-    &nbsp;— click a device then select its target port
+    &nbsp;- select the target device, port, and signal/channel in the side panel
     <button id="btn-cancel-connect" class="topo-btn" style="margin-left:auto">✕ Cancel</button>
   </div>
 
@@ -78,7 +91,7 @@
 
 {% block javascript %}
 {{ block.super }}
-<script type="module" src="{% static 'netbox_innovace_fibre/js/topology.js' %}?v=20260501-1"></script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/topology.js' %}?v=20260501-workspace-trace-2"></script>
 {% endblock %}
 
 {% block head %}
@@ -132,10 +145,102 @@
 
 #topo-filters select:focus { border-color: #4a9eff; }
 
+#topo-mode-switch {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px;
+  background: #0d1119;
+  border: 1px solid #22283a;
+  border-radius: 6px;
+}
+
+.topo-mode-btn.active {
+  background: #123152;
+  border-color: #4a9eff;
+  color: #fff;
+}
+
+#topo-search-wrap {
+  position: relative;
+  min-width: 280px;
+  flex: 0 1 360px;
+}
+
+#topo-search {
+  width: 100%;
+  background: #0d1119;
+  color: #c9d1e0;
+  border: 1px solid #2a3045;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 12px;
+  outline: none;
+}
+
+#topo-search:focus { border-color: #4a9eff; }
+
+#topo-search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 420;
+  display: none;
+  background: #12151c;
+  border: 1px solid #2a3045;
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.55);
+  overflow: hidden;
+}
+
+.topo-search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #1e2330;
+  color: #c9d1e0;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+.topo-search-result:hover {
+  background: #1e2742;
+  color: #fff;
+}
+
+.topo-search-result span {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.topo-search-result small {
+  display: block;
+  margin-top: 1px;
+  color: #6b7a99;
+  font-size: 10px;
+}
+
+.topo-search-empty {
+  padding: 8px 10px;
+  color: #6b7a99;
+  font-size: 12px;
+}
+
 #topo-controls {
   display: flex;
   gap: 6px;
   margin-left: auto;
+}
+
+#topo-save-status {
+  min-width: 96px;
+  color: #6b7a99;
+  font-size: 11px;
+  text-align: right;
 }
 
 .topo-btn {
@@ -242,7 +347,7 @@
   position: absolute;
   top: 10px;
   right: 10px;
-  width: 300px;
+  width: 360px;
   background: #12151c;
   border: 1px solid #1e2330;
   border-radius: 8px;
@@ -290,7 +395,7 @@
   font-size: 12px;
   color: #9aa3b0;
   line-height: 1.8;
-  max-height: 420px;
+  max-height: min(620px, calc(100vh - 150px));
   overflow-y: auto;
 }
 
@@ -303,6 +408,79 @@
 .topo-detail-row { display: flex; gap: 6px; }
 .topo-detail-label { color: #5c6880; min-width: 70px; }
 .topo-detail-value { color: #c9d1e0; }
+
+.topo-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.topo-inline-btn {
+  background: #1a1e2a;
+  border: 1px solid #2a3045;
+  border-radius: 4px;
+  color: #9bc7ff;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.topo-inline-btn:hover {
+  background: #25334d;
+  border-color: #4a9eff;
+  color: #fff;
+}
+
+.topo-panel-search {
+  width: 100%;
+  margin-top: 10px;
+  background: #0d1119;
+  color: #c9d1e0;
+  border: 1px solid #2a3045;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 12px;
+  outline: none;
+}
+
+.topo-port-groups {
+  margin-top: 10px;
+}
+
+.topo-port-group {
+  margin-top: 10px;
+  border-top: 1px solid #1e2330;
+  padding-top: 8px;
+}
+
+.topo-port-group-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #73829e;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 5px;
+}
+
+.topo-port-group-title span {
+  color: #4a9eff;
+  font-family: monospace;
+}
+
+.topo-channel-select {
+  width: 48px;
+  background: #0d1119;
+  color: #c9d1e0;
+  border: 1px solid #2a3045;
+  border-radius: 3px;
+  font-size: 10px;
+  padding: 1px 2px;
+}
 
 /* ── Clear-trace toolbar button ─────────────────────── */
 .topo-btn-trace {
