@@ -2263,6 +2263,9 @@ class CableManager {
           color: cable.color || "",
           type: "trunk",
           trunk_group: group,
+          barcode_a: "",
+          barcode_b: "",
+          barcodes: [],
           is_trunk_bundle: true,
           bundled_count: 0,
           bundled_cable_ids: [],
@@ -2285,6 +2288,12 @@ class CableManager {
       bundle.a_terminations.push(aTerm);
       bundle.b_terminations.push(bTerm);
       if (!bundle.color && cable.color) bundle.color = cable.color;
+      for (const barcode of [cable.barcode_a, cable.barcode_b]) {
+        const value = String(barcode || "").trim();
+        if (value && !bundle.barcodes.includes(value)) bundle.barcodes.push(value);
+      }
+      if (!bundle.barcode_a && cable.barcode_a) bundle.barcode_a = cable.barcode_a;
+      if (!bundle.barcode_b && cable.barcode_b) bundle.barcode_b = cable.barcode_b;
     }
 
     return [...regular, ...bundles.values()];
@@ -3863,6 +3872,12 @@ class AppController {
     const colorSwatch = cable.color
       ? `<span style="display:inline-block;width:12px;height:12px;background:#${cable.color};border-radius:2px;margin-right:4px;vertical-align:middle"></span>`
       : "";
+    const barcodeValues = cable.is_trunk_bundle
+      ? cable.barcodes || []
+      : [cable.barcode_a, cable.barcode_b].filter(Boolean);
+    const barcodeText = barcodeValues.length
+      ? Array.from(new Set(barcodeValues)).join(", ")
+      : "";
     this._infoTitle.textContent = cable.label || `Cable #${cable.id}`;
     const bundleRows = cable.is_trunk_bundle
       ? `
@@ -3881,6 +3896,7 @@ class AppController {
     this._infoBody.innerHTML = `
       <div class="r3d-info-row"><span class="r3d-info-lbl">Type</span><span class="r3d-info-val">${cable.type || "—"}</span></div>
       <div class="r3d-info-row"><span class="r3d-info-lbl">Color</span><span class="r3d-info-val">${colorSwatch}${cable.color ? "#" + cable.color : "—"}</span></div>
+      <div class="r3d-info-row"><span class="r3d-info-lbl">Barcode</span><span class="r3d-info-val">${barcodeText || "—"}</span></div>
       ${bundleRows}
       <div class="r3d-info-row"><span class="r3d-info-lbl">End A</span><span class="r3d-info-val">${aTerms}</span></div>
       <div class="r3d-info-row"><span class="r3d-info-lbl">End B</span><span class="r3d-info-val">${bTerms}</span></div>

@@ -37,6 +37,20 @@ def _logical_trace_port_name(port_name):
     return re.sub(r'_(front|rear)$', '', port_name or '', flags=re.IGNORECASE)
 
 
+def _cable_barcode_conflict(barcode, cable_id):
+    if not barcode:
+        return None
+    return (
+        Cable.objects
+        .filter(
+            Q(custom_field_data__iff_barcode_a=barcode) |
+            Q(custom_field_data__iff_barcode_b=barcode)
+        )
+        .exclude(pk=cable_id)
+        .first()
+    )
+
+
 class DeviceTypeSignalMetaViewSet(ModelViewSet):
     queryset = DeviceTypeSignalMeta.objects.all()
     serializer_class = DeviceTypeSignalMetaSerializer
@@ -929,6 +943,8 @@ def _build_rack_cables(devices_qs, physical_rack_by_device_id=None):
                 'color': c.color or '',
                 'type':  c.type or '',
                 'trunk_group': trunk_group,
+                'barcode_a': custom_fields.get('iff_barcode_a') or '',
+                'barcode_b': custom_fields.get('iff_barcode_b') or '',
                 'a_terminations': [],
                 'b_terminations': [],
             }
@@ -1137,14 +1153,15 @@ class BarcodeBulkAssignAPIView(APIView):
                     cable = Cable.objects.get(pk=obj_id)
                     barcode_a = (item.get('barcode_a') or '').strip() or None
                     barcode_b = (item.get('barcode_b') or '').strip() or None
-                    for field, value in [('iff_barcode_a', barcode_a), ('iff_barcode_b', barcode_b)]:
+                    has_conflict = False
+                    for field, value in [('Barcode A', barcode_a), ('Barcode B', barcode_b)]:
                         if value:
-                            existing = Cable.objects.filter(
-                                **{f'custom_field_data__{field}': value}
-                            ).exclude(pk=obj_id).first()
+                            existing = _cable_barcode_conflict(value, obj_id)
                             if existing:
                                 errors.append({'index': i, 'error': f'{field} already assigned to cable {existing.pk}'})
-                                value = None
+                                has_conflict = True
+                    if has_conflict:
+                        continue
                     cable.custom_field_data['iff_barcode_a'] = barcode_a
                     cable.custom_field_data['iff_barcode_b'] = barcode_b
                     cable.save(update_fields=['custom_field_data'])

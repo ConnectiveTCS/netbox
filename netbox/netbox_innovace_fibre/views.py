@@ -28,6 +28,20 @@ def _safe_image_url(image_field):
         return None
 
 
+def _cable_barcode_conflict(barcode, cable_id):
+    if not barcode:
+        return None
+    return (
+        Cable.objects
+        .filter(
+            Q(custom_field_data__iff_barcode_a=barcode) |
+            Q(custom_field_data__iff_barcode_b=barcode)
+        )
+        .exclude(pk=cable_id)
+        .first()
+    )
+
+
 class Rack3DView(View):
     template_name = 'netbox_innovace_fibre/rack_3d.html'
 
@@ -371,15 +385,15 @@ class BarcodeCsvImportView(LoginRequiredMixin, View):
                 if not cable:
                     errors.append({'row': i + 2, 'error': f'Cable not found: {label!r}'})
                     continue
-                for field, value in [('iff_barcode_a', barcode_a), ('iff_barcode_b', barcode_b)]:
+                has_conflict = False
+                for field, value in [('barcode_a', barcode_a), ('barcode_b', barcode_b)]:
                     if value:
-                        dup = Cable.objects.filter(
-                            **{f'custom_field_data__{field}': value}
-                        ).exclude(pk=cable.pk).first()
+                        dup = _cable_barcode_conflict(value, cable.pk)
                         if dup:
                             errors.append({'row': i + 2, 'error': f'{field} already used by cable {dup.pk}'})
-                            barcode_a = None if field == 'iff_barcode_a' else barcode_a
-                            barcode_b = None if field == 'iff_barcode_b' else barcode_b
+                            has_conflict = True
+                if has_conflict:
+                    continue
                 cable.custom_field_data['iff_barcode_a'] = barcode_a
                 cable.custom_field_data['iff_barcode_b'] = barcode_b
                 cable.save(update_fields=['custom_field_data'])
