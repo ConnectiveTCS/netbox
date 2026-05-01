@@ -2,6 +2,8 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    BarcodeBulkAssignAPIView,
+    BarcodeLookupAPIView,
     BayLayoutAPIView,
     DeviceSignalRoutingViewSet,
     DeviceSignalTraceAPIView,
@@ -32,5 +34,7 @@ urlpatterns = [
     # Port layout editor API (must come before the <int:pk> route to avoid ambiguity)
     path('device-types/port-layout-list/', PortLayoutListAPIView.as_view(), name='port-layout-list'),
     path('device-types/<int:pk>/port-layout/', PortLayoutAPIView.as_view(), name='port-layout'),
+    path('barcode-lookup/', BarcodeLookupAPIView.as_view(), name='barcode-lookup'),
+    path('barcode-bulk-assign/', BarcodeBulkAssignAPIView.as_view(), name='barcode-bulk-assign'),
 ]
 urlpatterns += router.urls

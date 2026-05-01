@@ -16,4 +16,7 @@ urlpatterns = [
     path('devices/<int:pk>/signal-routings/', views.DeviceSignalRoutingView.as_view(), name='device_signal_routing'),
     path('devices/<int:pk>/signal-routings/<int:route_pk>/delete/', views.DeviceSignalRoutingDeleteView.as_view(), name='device_signal_routing_delete'),
     path('devices/<int:pk>/signal-trace/', views.DeviceSignalTraceView.as_view(), name='device_signal_trace'),
+    path('barcode-manager/', views.BarcodeManagerView.as_view(), name='barcode_manager'),
+    path('barcode-manager/import/', views.BarcodeCsvImportView.as_view(), name='barcode_csv_import'),
+    path('barcode-manager/export/', views.BarcodeCsvExportView.as_view(), name='barcode_csv_export'),
 ]

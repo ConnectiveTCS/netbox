@@ -2,6 +2,7 @@
  * Fibre Topology Canvas
  * Dark-theme, hardware-accelerated 2D canvas with pan/zoom/drag.
  */
+import { BarcodeScanner, showSignalModal } from "./barcode_scanner.js";
 
 const PALETTE = [
   "#4A90D9",
@@ -1091,6 +1092,103 @@ document.addEventListener("DOMContentLoaded", () => {
         ?.split("=")[1] ?? "";
     return decodeURIComponent(raw);
   }
+
+  // ── Barcode Scanner Integration ────────────────────────────────────────
+  new BarcodeScanner({
+    onDeviceMatch(data) {
+      const node = mgr.nodes.get(data.id);
+      if (!node) {
+        BarcodeScanner.showToast(
+          `Device "${data.name}" is not visible in the current topology view. ` +
+          `Try applying the correct site filter.`,
+          'warning',
+        );
+        return;
+      }
+
+      // Clear any existing trace/selection
+      mgr.clearTrace();
+      btnClearTrace.style.display = 'none';
+      mgr.nodes.forEach(n => (n.selected = false));
+
+      // Select the matched node
+      node.selected = true;
+
+      // Pan/zoom to centre on the node
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      mgr.panX = cx - (node.x + node.width / 2) * mgr.scale;
+      mgr.panY = cy - (node.y + node.height / 2) * mgr.scale;
+      mgr._dirty = true;
+
+      // Highlight all directly connected edges
+      const connectedEdges = mgr.edges.filter(
+        e => e.srcNode?.id === data.id || e.tgtNode?.id === data.id,
+      );
+      const edgeIds = new Set(connectedEdges.map(e => e.id));
+      mgr.highlightEdges(edgeIds);
+      btnClearTrace.style.display = edgeIds.size > 0 ? '' : 'none';
+
+      // Signal-trace all connected ports
+      const portsTraced = new Set();
+      for (const edge of connectedEdges) {
+        const portName = edge.srcNode?.id === data.id ? edge.srcPort : edge.tgtPort;
+        if (portName && !portsTraced.has(portName)) {
+          portsTraced.add(portName);
+          _traceSignal(data.id, portName, 1).then(ids => {
+            ids.forEach(id => edgeIds.add(id));
+            mgr.highlightEdges(edgeIds);
+          });
+        }
+      }
+
+      BarcodeScanner.showToast(`Found: ${data.name} — ${data.site || ''}`, 'success');
+    },
+
+    onCableMatch(data) {
+      const edgeId = data.id;
+      const matchedEdge = mgr.edges.find(e => e.id === edgeId);
+      if (!matchedEdge) {
+        BarcodeScanner.showToast(`Cable #${edgeId} not found in current topology view`, 'warning');
+        return;
+      }
+
+      mgr.clearTrace();
+      mgr.highlightEdges(new Set([edgeId]));
+      btnClearTrace.style.display = '';
+
+      const matchedEnd = data.matched_end;
+      const terms = matchedEnd === 'a' ? data.a_terminations : data.b_terminations;
+      if (!terms?.length) {
+        BarcodeScanner.showToast(`Tracing cable #${edgeId}`, 'success');
+        return;
+      }
+      const startDeviceId = terms[0].device_id;
+      const startPort     = terms[0].port_name;
+
+      if (data.signals.length <= 1) {
+        _traceSignal(startDeviceId, startPort, 1).then(ids => {
+          ids.add(edgeId);
+          mgr.highlightEdges(ids);
+        });
+        BarcodeScanner.showToast(
+          `Tracing cable${data.label ? ` "${data.label}"` : ` #${edgeId}`}`,
+          'success',
+        );
+      } else {
+        showSignalModal(data, (selectedSignals) => {
+          const allIds = new Set([edgeId]);
+          Promise.all(
+            selectedSignals.map(sig => _traceSignal(startDeviceId, startPort, sig)),
+          ).then(results => {
+            results.forEach(ids => ids.forEach(id => allIds.add(id)));
+            mgr.highlightEdges(allIds);
+            btnClearTrace.style.display = '';
+          });
+        });
+      }
+    },
+  });
 
   loadTopology();
 });

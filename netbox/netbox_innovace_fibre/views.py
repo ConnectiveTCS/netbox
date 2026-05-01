@@ -1,11 +1,14 @@
+import csv
+import io
+
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q
-from django.http import Http404
-from django.http import HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views import View
 
-from dcim.models import Device, DeviceType
+from dcim.models import Cable, CableTermination, Device, DeviceType
 
 from .forms import DeviceSignalRoutingForm
 from .models import DeviceSignalRouting, SignalRouting
@@ -214,3 +217,133 @@ class DeviceSignalTraceView(View):
                 'available_ports': available_ports,
             },
         )
+
+
+class BarcodeManagerView(LoginRequiredMixin, View):
+    template_name = 'netbox_innovace_fibre/barcode_manager.html'
+
+    def get(self, request):
+        return render(request, self.template_name)
+
+
+class BarcodeCsvImportView(LoginRequiredMixin, View):
+    """
+    POST multipart/form-data with:
+      tab=devices|cables
+      file=<csv file upload>
+    Returns JSON: {imported: N, errors: [...]}
+    """
+
+    def post(self, request):
+        tab = request.POST.get('tab', 'devices')
+        upload = request.FILES.get('file')
+        if not upload:
+            return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+        text = upload.read().decode('utf-8-sig', errors='replace')
+        reader = csv.DictReader(io.StringIO(text))
+
+        imported = 0
+        errors = []
+
+        if tab == 'devices':
+            for i, row in enumerate(reader):
+                name    = (row.get('name') or '').strip()
+                barcode = (row.get('barcode') or '').strip()
+                if not name:
+                    errors.append({'row': i + 2, 'error': 'Missing name'})
+                    continue
+                device = Device.objects.filter(name=name).first()
+                if not device:
+                    errors.append({'row': i + 2, 'error': f'Device not found: {name!r}'})
+                    continue
+                if barcode:
+                    dup = Device.objects.filter(
+                        custom_field_data__iff_barcode=barcode
+                    ).exclude(pk=device.pk).first()
+                    if dup:
+                        errors.append({'row': i + 2, 'error': f'Barcode already used by {dup.name}'})
+                        continue
+                device.custom_field_data['iff_barcode'] = barcode or None
+                device.save(update_fields=['custom_field_data'])
+                imported += 1
+
+        elif tab == 'cables':
+            for i, row in enumerate(reader):
+                label     = (row.get('label') or '').strip()
+                barcode_a = (row.get('barcode_a') or '').strip() or None
+                barcode_b = (row.get('barcode_b') or '').strip() or None
+                if not label:
+                    errors.append({'row': i + 2, 'error': 'Missing label'})
+                    continue
+                cable = Cable.objects.filter(label=label).first()
+                if not cable:
+                    errors.append({'row': i + 2, 'error': f'Cable not found: {label!r}'})
+                    continue
+                for field, value in [('iff_barcode_a', barcode_a), ('iff_barcode_b', barcode_b)]:
+                    if value:
+                        dup = Cable.objects.filter(
+                            **{f'custom_field_data__{field}': value}
+                        ).exclude(pk=cable.pk).first()
+                        if dup:
+                            errors.append({'row': i + 2, 'error': f'{field} already used by cable {dup.pk}'})
+                            barcode_a = None if field == 'iff_barcode_a' else barcode_a
+                            barcode_b = None if field == 'iff_barcode_b' else barcode_b
+                cable.custom_field_data['iff_barcode_a'] = barcode_a
+                cable.custom_field_data['iff_barcode_b'] = barcode_b
+                cable.save(update_fields=['custom_field_data'])
+                imported += 1
+
+        return JsonResponse({'imported': imported, 'errors': errors})
+
+
+class BarcodeCsvExportView(LoginRequiredMixin, View):
+    """
+    GET ?tab=devices|cables
+    Returns a CSV file download.
+    """
+
+    def get(self, request):
+        tab = request.GET.get('tab', 'devices')
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+
+        if tab == 'cables':
+            response['Content-Disposition'] = 'attachment; filename="cable_barcodes.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['label', 'a_device', 'a_port', 'b_device', 'b_port', 'barcode_a', 'barcode_b'])
+            cables = Cable.objects.prefetch_related('terminations__termination').order_by('label', 'pk')
+            for cable in cables:
+                a_device, a_port, b_device, b_port = '', '', '', ''
+                for ct in cable.terminations.all():
+                    port = ct.termination
+                    dev = getattr(port, 'device', None)
+                    if ct.cable_end == 'A':
+                        a_device = dev.name if dev else ''
+                        a_port   = port.name if port else ''
+                    else:
+                        b_device = dev.name if dev else ''
+                        b_port   = port.name if port else ''
+                writer.writerow([
+                    cable.label or '',
+                    a_device, a_port, b_device, b_port,
+                    cable.custom_field_data.get('iff_barcode_a') or '',
+                    cable.custom_field_data.get('iff_barcode_b') or '',
+                ])
+        else:
+            response['Content-Disposition'] = 'attachment; filename="device_barcodes.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['name', 'site', 'rack', 'barcode'])
+            devices = (
+                Device.objects
+                .select_related('site', 'rack')
+                .order_by('name')
+            )
+            for device in devices:
+                writer.writerow([
+                    device.name or '',
+                    device.site.name if device.site_id else '',
+                    device.rack.name if device.rack_id else '',
+                    device.custom_field_data.get('iff_barcode') or '',
+                ])
+
+        return response

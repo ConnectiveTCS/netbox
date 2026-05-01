@@ -20,6 +20,10 @@ menu = PluginMenu(
                 link='plugins:netbox_innovace_fibre:port_layout_list',
                 link_text='Port Layout Editor',
             ),
+            PluginMenuItem(
+                link='plugins:netbox_innovace_fibre:barcode_manager',
+                link_text='Barcode Manager',
+            ),
         )),
     ),
     icon_class='mdi mdi-lan',

@@ -784,3 +784,212 @@ class PortLayoutListAPIView(APIView):
                 'port_count':         len(positions),
             })
         return Response({'device_types': result})
+
+
+class BarcodeLookupAPIView(APIView):
+    """
+    GET /api/plugins/innovace-fibre/barcode-lookup/?barcode=XXX
+
+    Searches for a device or cable matching the given barcode string.
+    Checks Device.iff_barcode, Cable.iff_barcode_a, and Cable.iff_barcode_b.
+    Returns a JSON object describing the matched object, including signal list
+    for cables (used to drive the multi-signal trace modal).
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def get(self, request):
+        barcode = request.query_params.get('barcode', '').strip()
+        if not barcode:
+            return Response({'error': 'barcode param required'}, status=400)
+
+        device = (
+            Device.objects
+            .select_related('site', 'rack', 'device_type', 'role', 'parent_bay__device')
+            .filter(custom_field_data__iff_barcode=barcode)
+            .first()
+        )
+        if device:
+            return Response(_serialise_barcode_device(device))
+
+        cable = (
+            Cable.objects
+            .prefetch_related('terminations__termination')
+            .filter(custom_field_data__iff_barcode_a=barcode)
+            .first()
+        )
+        matched_end = 'a'
+        if not cable:
+            cable = (
+                Cable.objects
+                .prefetch_related('terminations__termination')
+                .filter(custom_field_data__iff_barcode_b=barcode)
+                .first()
+            )
+            matched_end = 'b'
+
+        if cable:
+            return Response(_serialise_barcode_cable(cable, matched_end))
+
+        return Response(
+            {'error': f'No device or cable found for barcode “{barcode}”'},
+            status=404,
+        )
+
+
+class BarcodeBulkAssignAPIView(APIView):
+    """
+    POST /api/plugins/innovace-fibre/barcode-bulk-assign/
+
+    Accepts a JSON array of assignment objects:
+      For devices:  {"object_type": "device", "id": 42, "barcode": "BC-001"}
+      For cables:   {"object_type": "cable",  "id": 55, "barcode_a": "X", "barcode_b": "Y"}
+
+    Validates uniqueness per row and saves custom_field_data.
+    Returns {"saved": N, "errors": [{"index": i, "error": "..."}]}.
+    """
+    permission_classes = [IsAuthenticatedOrLoginNotRequired]
+
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=403)
+
+        items = request.data
+        if not isinstance(items, list):
+            return Response({'error': 'Expected a JSON array'}, status=400)
+
+        saved = 0
+        errors = []
+
+        for i, item in enumerate(items):
+            obj_type = item.get('object_type', '')
+            obj_id = item.get('id')
+            try:
+                if obj_type == 'device':
+                    device = Device.objects.get(pk=obj_id)
+                    barcode = (item.get('barcode') or '').strip()
+                    if barcode:
+                        existing = Device.objects.filter(
+                            custom_field_data__iff_barcode=barcode
+                        ).exclude(pk=obj_id).first()
+                        if existing:
+                            errors.append({'index': i, 'error': f'Barcode already assigned to {existing.name}'})
+                            continue
+                    device.custom_field_data['iff_barcode'] = barcode or None
+                    device.save(update_fields=['custom_field_data'])
+                    saved += 1
+
+                elif obj_type == 'cable':
+                    cable = Cable.objects.get(pk=obj_id)
+                    barcode_a = (item.get('barcode_a') or '').strip() or None
+                    barcode_b = (item.get('barcode_b') or '').strip() or None
+                    for field, value in [('iff_barcode_a', barcode_a), ('iff_barcode_b', barcode_b)]:
+                        if value:
+                            existing = Cable.objects.filter(
+                                **{f'custom_field_data__{field}': value}
+                            ).exclude(pk=obj_id).first()
+                            if existing:
+                                errors.append({'index': i, 'error': f'{field} already assigned to cable {existing.pk}'})
+                                value = None
+                    cable.custom_field_data['iff_barcode_a'] = barcode_a
+                    cable.custom_field_data['iff_barcode_b'] = barcode_b
+                    cable.save(update_fields=['custom_field_data'])
+                    saved += 1
+
+                else:
+                    errors.append({'index': i, 'error': f'Unknown object_type: {obj_type!r}'})
+
+            except (Device.DoesNotExist, Cable.DoesNotExist):
+                errors.append({'index': i, 'error': f'{obj_type} id={obj_id} not found'})
+            except Exception as exc:
+                errors.append({'index': i, 'error': str(exc)})
+
+        return Response({'saved': saved, 'errors': errors})
+
+
+def _serialise_barcode_device(device):
+    parent_bay = getattr(device, 'parent_bay', None)
+    parent_info = None
+    if parent_bay:
+        parent_dev = parent_bay.device
+        parent_info = {
+            'id': parent_dev.pk,
+            'name': parent_dev.name or f'Device {parent_dev.pk}',
+            'bay': parent_bay.name,
+            'url': f'/dcim/devices/{parent_dev.pk}/',
+        }
+    return {
+        'type': 'device',
+        'id': device.pk,
+        'name': device.name or f'Device {device.pk}',
+        'url': f'/dcim/devices/{device.pk}/',
+        'site': {'id': device.site_id, 'name': device.site.name} if device.site_id else None,
+        'rack': {'id': device.rack_id, 'name': device.rack.name} if device.rack_id else None,
+        'rack_unit': float(device.position) if device.position else None,
+        'role': device.role.name if device.role_id else '',
+        'device_type': device.device_type.model if device.device_type_id else '',
+        'parent_device': parent_info,
+    }
+
+
+def _serialise_barcode_cable(cable, matched_end):
+    a_terms = []
+    b_terms = []
+    matched_device = None
+    matched_port = None
+
+    for ct in cable.terminations.all():
+        port = ct.termination
+        if port is None:
+            continue
+        dev = getattr(port, 'device', None)
+        entry = {
+            'device_id': dev.pk if dev else None,
+            'device_name': dev.name if dev else '',
+            'port_name': port.name,
+            'object_type': f'dcim.{type(port).__name__.lower()}',
+        }
+        if ct.cable_end == 'A':
+            a_terms.append(entry)
+            if matched_end == 'a' and matched_device is None and dev:
+                matched_device = dev
+                matched_port = port.name
+        else:
+            b_terms.append(entry)
+            if matched_end == 'b' and matched_device is None and dev:
+                matched_device = dev
+                matched_port = port.name
+
+    signals = _get_port_signals(matched_device, matched_port) if matched_device and matched_port else [1]
+
+    return {
+        'type': 'cable',
+        'id': cable.pk,
+        'label': cable.label or '',
+        'matched_end': matched_end,
+        'a_terminations': a_terms,
+        'b_terminations': b_terms,
+        'signals': signals,
+    }
+
+
+def _get_port_signals(device, port_name):
+    """Return sorted list of distinct signal numbers for a device port (from overrides or type defaults)."""
+    device_signals = list(
+        DeviceSignalRouting.objects
+        .filter(device=device, from_port_name=port_name)
+        .values_list('from_signal', flat=True)
+        .distinct()
+    )
+    if device_signals:
+        return sorted(set(device_signals))
+
+    type_signals = list(
+        SignalRouting.objects
+        .filter(device_type=device.device_type, from_port_name=port_name)
+        .values_list('from_signal', flat=True)
+        .distinct()
+    )
+    if type_signals:
+        return sorted(set(type_signals))
+
+    return [1]

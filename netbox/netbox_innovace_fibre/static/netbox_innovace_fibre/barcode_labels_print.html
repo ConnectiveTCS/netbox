@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Barcode Labels — Print</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #fff;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    color: #000;
+  }
+
+  #controls {
+    padding: 12px 16px;
+    background: #f0f4fa;
+    border-bottom: 1px solid #d1d9e6;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #controls h2 { font-size: 14px; font-weight: 600; flex: 1; }
+  #controls button {
+    padding: 6px 14px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  #controls button:hover { background: #1d4ed8; }
+  #controls .close-btn { background: #6b7280; }
+  #controls .close-btn:hover { background: #4b5563; }
+
+  #labels-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .label-card {
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 8px;
+    background: #fff;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .label-title {
+    font-weight: 700;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+
+  .label-sub {
+    font-size: 9px;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 6px;
+  }
+
+  .label-codes {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .label-qr { flex-shrink: 0; }
+  .label-qr img, .label-qr canvas { display: block; }
+
+  .label-bar { flex: 1; overflow: hidden; }
+  .label-bar svg { width: 100%; max-width: 120px; height: auto; }
+
+  .label-bc-text {
+    font-family: monospace;
+    font-size: 9px;
+    text-align: center;
+    margin-top: 3px;
+    color: #222;
+    word-break: break-all;
+  }
+
+  .label-empty {
+    font-size: 9px;
+    color: #999;
+    font-style: italic;
+    text-align: center;
+    padding: 6px 0;
+  }
+
+  /* Cable: two barcode blocks stacked */
+  .cable-block {
+    border-top: 1px dashed #ddd;
+    padding-top: 4px;
+    margin-top: 4px;
+  }
+  .cable-block-label {
+    font-size: 9px;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 3px;
+  }
+
+  #no-items {
+    padding: 32px;
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+  }
+
+  @media print {
+    #controls { display: none !important; }
+    body { background: #fff; }
+    #labels-grid {
+      padding: 4mm;
+      gap: 4mm;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .label-card {
+      border: 0.5pt solid #000;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <h2><span id="ctrl-title">Barcode Labels</span></h2>
+  <button onclick="window.print()">🖨 Print</button>
+  <button class="close-btn" onclick="window.close()">✕ Close</button>
+</div>
+
+<div id="labels-grid">
+  <div id="no-items" style="display:none">No items to print.</div>
+</div>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const type = params.get('type') || 'device';
+  let items = [];
+  try { items = JSON.parse(params.get('items') || '[]'); } catch (_) {}
+
+  document.getElementById('ctrl-title').textContent =
+    `${items.length} ${type === 'device' ? 'Device' : 'Cable'} Label${items.length !== 1 ? 's' : ''}`;
+
+  const grid = document.getElementById('labels-grid');
+
+  if (!items.length) {
+    document.getElementById('no-items').style.display = '';
+    return;
+  }
+
+  items.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'label-card';
+
+    if (type === 'device') {
+      renderDeviceLabel(card, item);
+    } else {
+      renderCableLabel(card, item);
+    }
+
+    grid.appendChild(card);
+  });
+
+  function renderDeviceLabel(card, item) {
+    const name = item.name || `Device #${item.id}`;
+    const barcode = item.barcode || '';
+    const sub = [item.site, item.rack].filter(Boolean).join(' / ');
+
+    card.innerHTML = `
+      <div class="label-title" title="${esc(name)}">${esc(name)}</div>
+      ${sub ? `<div class="label-sub">${esc(sub)}</div>` : ''}
+      <div class="label-codes" id="codes-${item.id}"></div>
+    `;
+
+    const codesDiv = card.querySelector(`#codes-${item.id}`);
+    if (barcode) {
+      renderCodes(codesDiv, barcode);
+    } else {
+      codesDiv.innerHTML = '<div class="label-empty">No barcode assigned</div>';
+    }
+  }
+
+  function renderCableLabel(card, item) {
+    const label = item.label || `Cable #${item.id}`;
+    card.innerHTML = `<div class="label-title" title="${esc(label)}">${esc(label)}</div>`;
+
+    // A-end block
+    const blockA = document.createElement('div');
+    blockA.className = 'cable-block';
+    blockA.innerHTML = `<div class="cable-block-label">A-End</div><div id="codes-a-${item.id}"></div>`;
+    card.appendChild(blockA);
+    const codesA = blockA.querySelector(`#codes-a-${item.id}`);
+    if (item.barcodeA) {
+      renderCodes(codesA, item.barcodeA);
+    } else {
+      codesA.innerHTML = '<div class="label-empty">No A-end barcode</div>';
+    }
+
+    // B-end block
+    const blockB = document.createElement('div');
+    blockB.className = 'cable-block';
+    blockB.innerHTML = `<div class="cable-block-label">B-End</div><div id="codes-b-${item.id}"></div>`;
+    card.appendChild(blockB);
+    const codesB = blockB.querySelector(`#codes-b-${item.id}`);
+    if (item.barcodeB) {
+      renderCodes(codesB, item.barcodeB);
+    } else {
+      codesB.innerHTML = '<div class="label-empty">No B-end barcode</div>';
+    }
+  }
+
+  function renderCodes(container, barcodeText) {
+    container.className = 'label-codes';
+
+    // QR code
+    const qrWrap = document.createElement('div');
+    qrWrap.className = 'label-qr';
+    new QRCode(qrWrap, {
+      text: barcodeText,
+      width: 56,
+      height: 56,
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+    container.appendChild(qrWrap);
+
+    // Code128 barcode
+    const barWrap = document.createElement('div');
+    barWrap.className = 'label-bar';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    barWrap.appendChild(svg);
+    try {
+      JsBarcode(svg, barcodeText, {
+        format: 'CODE128',
+        displayValue: false,
+        height: 36,
+        margin: 2,
+      });
+    } catch (_) {
+      // Barcode text may contain characters invalid for CODE128 — fall back to text only
+      barWrap.innerHTML = `<div class="label-bc-text">${esc(barcodeText)}</div>`;
+    }
+    container.appendChild(barWrap);
+
+    // Text below
+    const textDiv = document.createElement('div');
+    textDiv.style.width = '100%';
+    textDiv.style.gridColumn = '1 / -1';
+    container.style.flexWrap = 'wrap';
+    const bcText = document.createElement('div');
+    bcText.className = 'label-bc-text';
+    bcText.textContent = barcodeText;
+    container.parentElement?.appendChild(bcText) || container.appendChild(bcText);
+  }
+
+  function esc(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+})();
+</script>
+</body>
+</html>

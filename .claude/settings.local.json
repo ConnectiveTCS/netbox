@@ -28,7 +28,15 @@
       "PowerShell(docker compose logs --tail=50 netbox 2>&1 | Where-Object { $_ -match \"ERROR|Exception|Traceback|racks|500\" })",
       "PowerShell(docker compose logs --tail=80 netbox 2>&1)",
       "PowerShell(docker compose logs --tail=100 nginx 2>&1)",
-      "Bash(python -c \"from extras.models import CustomField, CustomFieldChoiceSet; from extras.choices import CustomFieldTypeChoices; print\\('OK'\\)\")"
+      "Bash(python -c \"from extras.models import CustomField, CustomFieldChoiceSet; from extras.choices import CustomFieldTypeChoices; print\\('OK'\\)\")",
+      "PowerShell(docker compose exec -T netbox python /opt/netbox/netbox/manage.py setup_cable_custom_fields 2>&1)",
+      "PowerShell(docker compose exec -T netbox python -c \"from extras.models import CustomField; cf = CustomField\\(\\); print\\([f.name for f in cf._meta.get_fields\\(\\)]\\)\" 2>&1)",
+      "PowerShell(docker compose exec -T netbox python /opt/netbox/netbox/manage.py shell -c \"from extras.models import CustomField; print\\(hasattr\\(CustomField, 'unique'\\)\\); cf = CustomField.__new__\\(CustomField\\); print\\([f.name for f in cf._meta.get_fields\\(\\) if 'unique' in f.name.lower\\(\\)]\\)\" 2>&1)",
+      "PowerShell(docker compose exec -T netbox cat /opt/netbox/netbox/netbox_innovace_fibre/management/commands/setup_cable_custom_fields.py)",
+      "PowerShell(tail -30 2>&1)",
+      "PowerShell(docker compose build netbox 2>&1)",
+      "PowerShell(docker compose up -d 2>&1)",
+      "PowerShell(docker compose exec -T netbox python /opt/netbox/netbox/manage.py collectstatic --no-input 2>&1)"
     ]
   }
 }

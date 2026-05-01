@@ -4,6 +4,7 @@ import {
   CSS2DRenderer,
   CSS2DObject,
 } from "three/addons/renderers/CSS2DRenderer.js";
+import { BarcodeScanner, showSignalModal } from "./barcode_scanner.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -563,6 +564,58 @@ class RackScene {
     this._controls.target.lerpVectors(a.fromTarget, a.toTarget, s);
     this._controls.update();
     if (done) this._cameraAnim = null;
+  }
+
+  /**
+   * Highlight a device by its NetBox id with a green pulse glow.
+   * Also dims unrelated cables and zooms the camera to it.
+   * Returns the matched mesh or null if not found.
+   */
+  highlightDeviceById(deviceId) {
+    const mesh = this._deviceMeshes.find(m => m.userData.deviceId === deviceId) || null;
+    if (!mesh) return null;
+    this.clearSelection();
+    this._selectedMesh = mesh;
+    this._setEmissive(mesh, 0x00ff88, 0.9);
+    this._setIsolation(mesh);
+    this._cableManager.dimUnrelated(new Set([deviceId]));
+    this._zoomToDevice(mesh);
+    return mesh;
+  }
+
+  /**
+   * Pulse-highlight an enclosure device AND flash one of its device-bay slots.
+   * bayName is the DeviceBay.name string stored in device_bays[].name.
+   */
+  highlightEnclosureAndBay(enclosureDeviceId, bayName) {
+    const encMesh = this._deviceMeshes.find(m => m.userData.deviceId === enclosureDeviceId) || null;
+    if (!encMesh) return;
+    this.clearSelection();
+    this._selectedMesh = encMesh;
+    this._setEmissive(encMesh, 0x00ff88, 0.9);
+    this._setIsolation(encMesh);
+    this._zoomToDevice(encMesh);
+
+    // Flash the bay slot mesh (child of encMesh group with matching bayName)
+    const bayMesh = this._deviceMeshes.find(m => {
+      const d = m.userData.deviceData;
+      return d && d._bayName === bayName && d._parentEnclosureId === enclosureDeviceId;
+    });
+    if (bayMesh) this._pulseEmissive(bayMesh, 0xffdd00, 12);
+  }
+
+  /** Animate emissive intensity pulsing N times then reset. */
+  _pulseEmissive(mesh, color, pulses) {
+    let count = 0;
+    const interval = setInterval(() => {
+      const intensity = count % 2 === 0 ? 1.2 : 0.1;
+      this._setEmissive(mesh, color, intensity);
+      count++;
+      if (count >= pulses * 2) {
+        clearInterval(interval);
+        this._setEmissive(mesh, 0x000000, 0);
+      }
+    }, 180);
   }
 
   // ── Private: scene building ───────────────────────────────────────────────
@@ -2341,6 +2394,7 @@ class AppController {
     this._scene = new RackScene(this._viewport);
     this._wireEvents();
     this._loadSitesAndRacks();
+    this._initBarcodeScanner();
   }
 
   // ── Settings persistence ──────────────────────────────────────────────────
@@ -3250,6 +3304,90 @@ class AppController {
     } catch (_) {
       // Fallback: just animate the individual cable
       this._scene.startTrace(cable.id);
+    }
+  }
+
+  // ── Barcode scanner integration ───────────────────────────────────────────
+
+  _initBarcodeScanner() {
+    this._barcodeScanner = new BarcodeScanner({
+      onDeviceMatch: (data) => this._handleBarcodeDeviceMatch(data),
+      onCableMatch:  (data) => this._handleBarcodeCableMatch(data),
+    });
+  }
+
+  async _handleBarcodeDeviceMatch(data) {
+    const deviceId  = data.id;
+    const rackId    = data.rack?.id;
+    const parentDev = data.parent_device;
+
+    if (this._layoutMode) {
+      // Floor-plan mode: fly camera to the rack object, then highlight
+      const highlighted = this._scene.highlightDeviceById(deviceId);
+      if (!highlighted && rackId) {
+        await this._fetchMissingRacks([rackId]);
+        // Re-render layout with current placements to include this rack's data
+        const placements = this._canvas ? this._canvas.getPlacements() : [];
+        if (placements.length) {
+          this._scene.loadLayout(placements, this._loadedRacks, {
+            ...this._settings(),
+            floorWidth: parseFloat(document.getElementById('cfg-floor-w')?.value) || 400,
+            floorDepth: parseFloat(document.getElementById('cfg-floor-d')?.value) || 300,
+          });
+        }
+        this._scene.highlightDeviceById(deviceId);
+      }
+      BarcodeScanner.showToast(`Found: ${data.name} — ${data.rack?.name || ''}`, 'success');
+      return;
+    }
+
+    // Single-rack mode
+    const currentRackId = this._currentData?.rack?.id;
+    if (rackId && rackId !== currentRackId) {
+      // Switch to the rack containing this device
+      this._rackSel.value = rackId;
+      await this._loadRack(rackId);
+    }
+
+    if (parentDev) {
+      this._scene.highlightEnclosureAndBay(parentDev.id, parentDev.bay);
+      BarcodeScanner.showToast(
+        `Found: ${data.name} in ${parentDev.name} / ${parentDev.bay}`,
+        'success',
+      );
+    } else {
+      const mesh = this._scene.highlightDeviceById(deviceId);
+      if (!mesh) {
+        BarcodeScanner.showToast(`Device "${data.name}" not visible in current rack`, 'warning');
+        return;
+      }
+      BarcodeScanner.showToast(`Found: ${data.name} — U${data.rack_unit || '?'} in ${data.rack?.name || ''}`, 'success');
+    }
+
+    // Show device info panel
+    const devData = this._scene._deviceMeshes
+      .find(m => m.userData.deviceId === deviceId)
+      ?.userData.deviceData;
+    if (devData) this._showInfo(devData);
+  }
+
+  _handleBarcodeCableMatch(data) {
+    const cableId = data.id;
+
+    // Select (highlight) the cable mesh
+    const entry = this._scene._cableManager._entries?.find(e => e.cableData?.id === cableId);
+    if (entry) this._scene._cableManager.selectCable(entry.mesh);
+
+    const label = data.label ? ` "${data.label}"` : '';
+    if (data.signals.length <= 1) {
+      this._scene.startTrace(cableId);
+      BarcodeScanner.showToast(`Tracing cable #${cableId}${label}`, 'success');
+    } else {
+      BarcodeScanner.showToast(`Cable #${cableId}${label} — select signals to trace`, 'info');
+      showSignalModal(data, (selectedSignals) => {
+        // Each signal triggers the full trace animation on this cable
+        this._scene.startTrace(cableId);
+      });
     }
   }
 
