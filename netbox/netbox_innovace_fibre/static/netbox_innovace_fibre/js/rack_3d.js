@@ -120,7 +120,60 @@ function getCsrfToken() {
   const match = document.cookie
     .split(";")
     .find((c) => c.trim().startsWith("csrftoken="));
-  return match ? match.trim().split("=")[1] : "";
+  return match ? decodeURIComponent(match.trim().split("=")[1]) : "";
+}
+
+function escHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function plainError(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  if (text.startsWith("<")) {
+    const title =
+      text.match(/<title>(.*?)<\/title>/is)?.[1] ||
+      text.match(/<h1[^>]*>(.*?)<\/h1>/is)?.[1] ||
+      "";
+    return (
+      title.replace(/\s+/g, " ").trim() ||
+      "The trace request timed out before NetBox returned JSON."
+    );
+  }
+  return text;
+}
+
+function traceDirectionLabel(value) {
+  return (
+    {
+      a_to_b: "A to B",
+      b_to_a: "B to A",
+      bidirectional: "Bidirectional",
+      unknown: "Unknown",
+    }[value || "unknown"] || "Unknown"
+  );
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows
+    .map((row) =>
+      row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","),
+    )
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ── RackScene ────────────────────────────────────────────────────────────────
@@ -1505,6 +1558,28 @@ class RackScene {
     this.startTraceOnCurve(entry.mesh.userData.curve);
   }
 
+  startTraceOnCurves(curves, options = {}) {
+    const usable = (curves || []).filter(Boolean);
+    if (!usable.length) return;
+    if (usable.length === 1) {
+      this.startTraceOnCurve(usable[0], options);
+      return;
+    }
+    const points = [];
+    usable.forEach((curve) => {
+      const samples = curve.getPoints(24);
+      if (!samples.length) return;
+      if (points.length && points[points.length - 1].distanceTo(samples[0]) < 0.01) {
+        points.push(...samples.slice(1));
+      } else {
+        points.push(...samples);
+      }
+    });
+    if (points.length < 2) return;
+    const merged = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.5);
+    this.startTraceOnCurve(merged, options);
+  }
+
   startTraceOnCurve(curve, options = {}) {
     if (this._traceAnimator) {
       this._traceAnimator.dispose();
@@ -1520,6 +1595,47 @@ class RackScene {
       this._traceAnimator.dispose();
       this._traceAnimator = null;
     }
+  }
+
+  highlightTraceCables(cableIds) {
+    const result = this._cableManager.highlightTraceCableIds(cableIds);
+    this._cableMeshes = this._cableManager.getMeshes();
+    return result;
+  }
+
+  clearTraceVisuals() {
+    this.stopTrace();
+    this._cableManager.clearTraceHighlight();
+  }
+
+  fitToTraceCurves(curves) {
+    const box = new THREE.Box3();
+    let hasPoint = false;
+    (curves || []).forEach((curve) => {
+      if (!curve) return;
+      curve.getPoints(32).forEach((point) => {
+        box.expandByPoint(point);
+        hasPoint = true;
+      });
+    });
+    if (!hasPoint) {
+      this.fitView();
+      return;
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 10);
+    const fov = this._camera.fov * (Math.PI / 180);
+    const dist = (maxDim / (2 * Math.tan(fov / 2))) * 1.6;
+    this._controls.target.copy(center);
+    this._camera.position.set(
+      center.x + dist * 0.45,
+      center.y + dist * 0.55,
+      center.z + dist,
+    );
+    this._camera.lookAt(center);
+    this._controls.update();
+    this._notifyCameraChanged();
   }
 
   getCableMeshes() {
@@ -2103,6 +2219,7 @@ class CableManager {
       showPower: false,
       opacity: 1.0,
     };
+    this._traceCableIds = new Set();
   }
 
   build(cables, deviceWorldMap, rackWorldMap) {
@@ -2198,6 +2315,7 @@ class CableManager {
     this._entries = [];
     this._hoveredMesh = null;
     this._selectedMesh = null;
+    this._traceCableIds.clear();
   }
 
   dispose() {
@@ -2324,6 +2442,10 @@ class CableManager {
 
   applySettings({ showPatch, showNetwork, showPower, opacity }) {
     this._settings = { showPatch, showNetwork, showPower, opacity };
+    if (this._traceCableIds.size) {
+      this.highlightTraceCableIds(this._traceCableIds);
+      return;
+    }
     for (const { mesh, cableData } of this._entries) {
       mesh.visible = this._shouldRender(cableData);
       mesh.material.transparent = opacity < 1;
@@ -2342,6 +2464,10 @@ class CableManager {
   }
 
   resetDim() {
+    if (this._traceCableIds.size) {
+      this.highlightTraceCableIds(this._traceCableIds);
+      return;
+    }
     for (const { mesh } of this._entries) {
       mesh.material.transparent = this._settings.opacity < 1;
       mesh.material.opacity = this._settings.opacity;
@@ -2376,6 +2502,46 @@ class CableManager {
 
   clearCableSelection() {
     this.selectCable(null);
+  }
+
+  highlightTraceCableIds(cableIds) {
+    this._traceCableIds = new Set(
+      [...(cableIds || [])].map((id) => String(id)),
+    );
+    const matchedIds = new Set();
+    const curves = [];
+    const traceColor = new THREE.Color(0x00aaff);
+
+    for (const { mesh, cableData } of this._entries) {
+      const ids = this._visualCableIds(cableData);
+      const traced = ids.some((id) => this._traceCableIds.has(String(id)));
+      if (traced) ids.forEach((id) => matchedIds.add(String(id)));
+
+      mesh.visible = traced || this._shouldRender(cableData);
+      mesh.material.transparent = true;
+      mesh.material.opacity = traced ? 1.0 : 0.06;
+      mesh.material.emissive = traced ? traceColor : new THREE.Color(0x000000);
+      mesh.material.emissiveIntensity = traced ? 1.25 : 0;
+      mesh.material.needsUpdate = true;
+      if (traced && mesh.userData?.curve) curves.push(mesh.userData.curve);
+    }
+
+    const missingCableIds = [...this._traceCableIds].filter(
+      (id) => !matchedIds.has(id),
+    );
+    return { curves, matchedCableIds: [...matchedIds], missingCableIds };
+  }
+
+  clearTraceHighlight() {
+    this._traceCableIds.clear();
+    for (const { mesh, cableData } of this._entries) {
+      mesh.visible = this._shouldRender(cableData);
+      mesh.material.transparent = this._settings.opacity < 1;
+      mesh.material.opacity = this._settings.opacity;
+      mesh.material.emissive = new THREE.Color(0x000000);
+      mesh.material.emissiveIntensity = 0;
+      mesh.material.needsUpdate = true;
+    }
   }
 
   _setCableEmissive(mesh, color, intensity) {
@@ -2423,6 +2589,12 @@ class CableManager {
       if (deviceIdSet.has(t.device_id)) return true;
     }
     return false;
+  }
+
+  _visualCableIds(cable) {
+    if (!cable) return [];
+    if (cable.is_trunk_bundle) return cable.bundled_cable_ids || [];
+    return [cable.id];
   }
 }
 
@@ -2911,6 +3083,9 @@ class AppController {
     this._currentData = null; // single-rack mode
     this._layoutMode = false;
     this._ctxCableData = null;
+    this._activeTrace = null;
+    this._topologyIndex = null;
+    this._tracePlacementState = null;
     this._sessionLoadState = this._restoreSessionState();
     this._sessionSaveTimer = null;
 
@@ -3208,7 +3383,7 @@ class AppController {
     // Device / cable picking in 3D viewport
     document.getElementById("btn-info-close").addEventListener("click", () => {
       this._scene.clearSelection();
-      this._scene.stopTrace();
+      this._clearFullTrace();
       this._hideInfo();
     });
     this._viewport.addEventListener("click", (e) => {
@@ -3244,7 +3419,7 @@ class AppController {
     // Escape key: stop trace animation
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        this._scene.stopTrace();
+        this._clearFullTrace();
         this._scene.clearSelection();
         this._hideInfo();
       }
@@ -3258,7 +3433,14 @@ class AppController {
         if (!item) return;
         const action = item.dataset.action;
         const cable = this._ctxCableData;
-        if (action === "traceSignal" && cable) this._traceSignal(cable);
+        if (action === "traceA" && cable) {
+          this._showCableInfo(cable);
+          this._traceSignal(cable, "a");
+        }
+        if (action === "traceB" && cable) {
+          this._showCableInfo(cable);
+          this._traceSignal(cable, "b");
+        }
         if (action === "openCable" && cable)
           window.open(`/dcim/cables/${cable.id}/`, "_blank");
         cableCtxMenu.classList.add("r3d-ctx-hidden");
@@ -3383,6 +3565,7 @@ class AppController {
   }
 
   async _loadRack(rackId) {
+    this._clearFullTrace();
     if (this._loadedRacks[rackId]) {
       this._currentData = this._loadedRacks[rackId];
       this._scene.load(this._currentData, this._settings());
@@ -3432,6 +3615,7 @@ class AppController {
 
   async _autoLoadFloorPlan(siteId) {
     try {
+      this._clearFullTrace();
       const res = await fetch(
         `/api/plugins/innovace-fibre/floor-plan/?site_id=${siteId}`,
       );
@@ -3553,6 +3737,7 @@ class AppController {
 
   async _applyLayout() {
     if (!this._canvas) return;
+    this._clearFullTrace();
     const placements = this._canvas.getPlacements();
     if (!placements.length) {
       this._closeLayoutPanel();
@@ -3697,6 +3882,7 @@ class AppController {
   // ── Scene rebuild ─────────────────────────────────────────────────────────
 
   _rebuildScene() {
+    this._clearFullTrace();
     const cameraState = this._scene.getCameraState();
     if (this._layoutMode && this._canvas) {
       const placements = this._canvas.getPlacements();
@@ -3890,7 +4076,15 @@ class AppController {
       : `
         <div class="r3d-info-actions">
           <a href="/dcim/cables/${cable.id}/" target="_blank" class="r3d-info-btn">Open in NetBox</a>
-          <button class="r3d-info-btn r3d-info-btn-accent" id="btn-trace-cable">Trace Signal</button>
+          <button class="r3d-info-btn r3d-info-btn-accent" id="btn-trace-cable-a">Trace A to B</button>
+          <button class="r3d-info-btn r3d-info-btn-accent" id="btn-trace-cable-b">Trace B to A</button>
+        </div>
+        <label class="r3d-trace-check">
+          <input id="r3d-trace-override" type="checkbox">
+          <span>Override saved direction for this trace</span>
+        </label>
+        <div id="r3d-full-trace-panel" class="r3d-full-trace-panel">
+          <div class="r3d-trace-note">Full trace follows saved cable direction unless override is checked.</div>
         </div>
       `;
     this._infoBody.innerHTML = `
@@ -3903,101 +4097,325 @@ class AppController {
       ${actions}
     `;
     this._infoPanel.classList.remove("r3d-info-hidden");
-    document
-      .getElementById("btn-trace-cable")
-      ?.addEventListener("click", () => {
-        this._traceSignal(cable);
-      });
+    document.getElementById("btn-trace-cable-a")?.addEventListener("click", () => {
+      this._traceSignal(cable, "a");
+    });
+    document.getElementById("btn-trace-cable-b")?.addEventListener("click", () => {
+      this._traceSignal(cable, "b");
+    });
   }
 
-  async _traceSignal(cable) {
-    const isFibre =
-      typeof cable.type === "string" &&
-      [
-        "smf",
-        "smf-os1",
-        "smf-os2",
-        "mmf",
-        "mmf-om1",
-        "mmf-om2",
-        "mmf-om3",
-        "mmf-om4",
-        "mmf-om5",
-        "aoc",
-      ].includes(cable.type);
-
-    if (!isFibre) {
-      // Non-fibre: animate the cable's own curve directly
-      this._scene.startTrace(cable.id);
-      return;
-    }
-
-    // Fibre: fetch signal trace to build multi-hop merged curve
-    const term = (cable.a_terminations || [])[0];
-    if (!term) {
-      this._scene.startTrace(cable.id);
-      return;
-    }
+  async _traceSignal(cable, entryEnd = "a", overrideDirection = null) {
+    if (!cable || cable.is_trunk_bundle) return;
+    const panel = document.getElementById("r3d-full-trace-panel");
+    const overrideBox = document.getElementById("r3d-trace-override");
+    const shouldOverride = overrideDirection ?? !!overrideBox?.checked;
+    if (panel) panel.innerHTML = `<div class="r3d-trace-loading">Tracing full path...</div>`;
 
     try {
-      const res = await fetch(
-        `/api/plugins/innovace-fibre/trace/device/${term.device_id}/` +
-          `?port=${encodeURIComponent(term.port_name)}&signal=1`,
-      );
-      if (!res.ok) {
-        this._scene.startTrace(cable.id);
-        return;
-      }
-      const data = await res.json();
+      const result = await this._fetchFullTrace(cable.id, entryEnd, shouldOverride);
+      this._activeTrace = { cable, entryEnd, overrideDirection: shouldOverride, result };
+      const traceCableIds = new Set(result.highlight_cable_ids || []);
+      (result.hops || [])
+        .filter((hop) => hop.type === "cable" && hop.cable_id)
+        .forEach((hop) => traceCableIds.add(hop.cable_id));
 
-      // Collect hops: each hop has {from_device_id, from_port, to_device_id, to_port}
-      const hops = (data.paths || [data]).flat ? [data].flat() : [];
-      const allCables = this._currentData?.cables || [];
-
-      // Match each hop to a cable by checking termination device+port overlap
-      const curves = [];
-      for (const hop of hops) {
-        const matched = allCables.find((c) => {
-          const aMatch = (c.a_terminations || []).some(
-            (t) =>
-              t.device_id === hop.from_device_id &&
-              t.port_name === hop.from_port,
-          );
-          const bMatch = (c.b_terminations || []).some(
-            (t) =>
-              t.device_id === hop.to_device_id && t.port_name === hop.to_port,
-          );
-          return aMatch && bMatch;
+      await this._ensureTraceRacks([...traceCableIds]);
+      const visual = this._scene.highlightTraceCables(traceCableIds);
+      const uiWarnings = [];
+      if (visual.missingCableIds.length) {
+        uiWarnings.push({
+          message: `Could not render ${visual.missingCableIds.length} traced cable hop(s) in the current 3D scene.`,
         });
-        if (matched) {
-          const mesh = this._scene
-            .getCableMeshes()
-            .find((m) => m.userData?.cableId === matched.id);
-          if (mesh?.userData?.curve) curves.push(mesh.userData.curve);
-        }
       }
-
-      if (curves.length === 0) {
+      if (visual.curves.length) {
+        this._scene.startTraceOnCurves(visual.curves, { color: 0x00aaff, loop: true });
+        this._scene.fitToTraceCurves(visual.curves);
+      } else if (traceCableIds.size) {
         this._scene.startTrace(cable.id);
-        return;
+      } else {
+        this._scene.stopTrace();
       }
-      if (curves.length === 1) {
-        this._scene.startTraceOnCurve(curves[0], { loop: true });
-        return;
+      this._renderFullTraceResult(cable, result, uiWarnings);
+      BarcodeScanner.showToast(`Full trace ready for cable #${cable.id}`, "success");
+    } catch (err) {
+      if (panel) {
+        panel.innerHTML = `<div class="r3d-trace-warning">${escHtml(err.message)}</div>`;
       }
+      BarcodeScanner.showToast(`Trace failed: ${err.message}`, "warning");
+    }
+  }
 
-      // Merge all curve points into one continuous curve
-      const allPts = curves.flatMap((c) => c.getPoints(20));
-      const merged = new THREE.CatmullRomCurve3(
-        allPts,
-        false,
-        "catmullrom",
-        0.5,
+  async _fetchFullTrace(cableId, entryEnd, overrideDirection) {
+    const res = await fetch("/api/plugins/innovace-fibre/trace/full/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCsrfToken(),
+      },
+      body: JSON.stringify({
+        cable_id: cableId,
+        entry_end: entryEnd,
+        override_direction: !!overrideDirection,
+      }),
+    });
+    const contentType = res.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await res.json()
+      : { error: await res.text() };
+    if (!res.ok) {
+      throw new Error(plainError(data.error) || `Trace request failed: ${res.status}`);
+    }
+    return data;
+  }
+
+  async _ensureTraceRacks(cableIds) {
+    const topology = await this._getTopologyIndex();
+    const rackIds = new Set();
+    (cableIds || []).forEach((id) => {
+      const edge = topology.cables.get(String(id));
+      if (!edge) return;
+      if (edge.sourceRackId) rackIds.add(String(edge.sourceRackId));
+      if (edge.targetRackId) rackIds.add(String(edge.targetRackId));
+    });
+    if (!rackIds.size) return;
+
+    await this._fetchMissingRacks([...rackIds]);
+    const visibleRackIds = this._visibleRackIds();
+    const allVisible = [...rackIds].every((id) => visibleRackIds.has(String(id)));
+    if (allVisible) return;
+    const { placements, floor, temporaryRackIds } = await this._tracePlacementsForRacks(rackIds);
+    if (!placements.length) return;
+
+    this._layoutMode = true;
+    this._currentData = null;
+    this._tracePlacementState = { temporaryRackIds };
+    this._scene.loadLayout(placements, this._loadedRacks, {
+      ...this._settings(),
+      floorWidth: floor.width,
+      floorDepth: floor.depth,
+    });
+  }
+
+  async _getTopologyIndex() {
+    if (this._topologyIndex) return this._topologyIndex;
+    const res = await fetch("/api/plugins/innovace-fibre/topology/", {
+      headers: { "X-CSRFToken": getCsrfToken() },
+    });
+    if (!res.ok) throw new Error(`Could not load topology index: HTTP ${res.status}`);
+    const data = await res.json();
+    const nodes = new Map((data.nodes || []).map((node) => [String(node.id), node]));
+    const cables = new Map();
+    (data.edges || []).forEach((edge) => {
+      const source = nodes.get(String(edge.source));
+      const target = nodes.get(String(edge.target));
+      cables.set(String(edge.id), {
+        ...edge,
+        sourceRackId: source?.rack_id || null,
+        targetRackId: target?.rack_id || null,
+      });
+    });
+    this._topologyIndex = { nodes, cables };
+    return this._topologyIndex;
+  }
+
+  async _tracePlacementsForRacks(rackIds) {
+    const floor = {
+      width: parseFloat(document.getElementById("cfg-floor-w")?.value) || 400,
+      depth: parseFloat(document.getElementById("cfg-floor-d")?.value) || 300,
+    };
+    let placements = [];
+
+    if (this._layoutMode && this._canvas?.getPlacements().length) {
+      placements = this._canvas.getPlacements();
+    } else {
+      const siteId = this._siteSel.value || this._siteForRackIds(rackIds);
+      const saved = siteId ? await this._loadSavedTracePlacements(siteId) : null;
+      if (saved?.floor) {
+        floor.width = saved.floor.width || floor.width;
+        floor.depth = saved.floor.depth || floor.depth;
+      }
+      placements = saved?.placements || [];
+    }
+
+    if (!placements.length && this._currentData?.rack?.id) {
+      placements = [{
+        rackId: this._currentData.rack.id,
+        x: floor.width / 2,
+        z: floor.depth / 2,
+        orientation: "N",
+      }];
+    }
+
+    const placed = new Set(placements.map((p) => String(p.rackId)));
+    const missing = [...rackIds].filter((id) => !placed.has(String(id)));
+    const temporaryRackIds = [];
+    if (missing.length) {
+      const spacing = 32;
+      const startX = Math.max(24, floor.width / 2 - ((missing.length - 1) * spacing) / 2);
+      const z = Math.min(floor.depth - 24, Math.max(24, floor.depth / 2 + 72));
+      missing.forEach((rackId, idx) => {
+        placements.push({
+          rackId: parseInt(rackId, 10) || rackId,
+          x: startX + idx * spacing,
+          z,
+          orientation: "N",
+        });
+        temporaryRackIds.push(String(rackId));
+      });
+    }
+    return { placements, floor, temporaryRackIds };
+  }
+
+  _visibleRackIds() {
+    if (this._layoutMode && this._canvas?.getPlacements().length) {
+      return new Set(this._canvas.getPlacements().map((p) => String(p.rackId)));
+    }
+    if (this._currentData?.rack?.id) return new Set([String(this._currentData.rack.id)]);
+    return new Set();
+  }
+
+  async _loadSavedTracePlacements(siteId) {
+    try {
+      const res = await fetch(
+        `/api/plugins/innovace-fibre/floor-plan/?site_id=${encodeURIComponent(siteId)}`,
       );
-      this._scene.startTraceOnCurve(merged, { color: 0x00aaff, loop: true });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const cfg = data.config || {};
+      return {
+        floor: cfg.floor || null,
+        placements: cfg.racks || [],
+      };
     } catch (_) {
-      // Fallback: just animate the individual cable
-      this._scene.startTrace(cable.id);
+      return null;
+    }
+  }
+
+  _siteForRackIds(rackIds) {
+    for (const rackId of rackIds || []) {
+      const rack = this._allRacks.find((item) => String(item.id) === String(rackId));
+      if (rack?.site_id) return String(rack.site_id);
+    }
+    return "";
+  }
+
+  _renderFullTraceResult(cable, result, uiWarnings = []) {
+    const panel = document.getElementById("r3d-full-trace-panel");
+    if (!panel) return;
+    const warnings = [...(result.warnings || []), ...uiWarnings];
+    const branches = result.branches || [];
+    const tempCount = this._tracePlacementState?.temporaryRackIds?.length || 0;
+    panel.innerHTML = `
+      ${this._traceRow("Start", `${String(result.start?.entry_end || "").toUpperCase()} end of cable #${result.start?.cable_id || cable.id}`)}
+      ${this._traceRow("Direction", traceDirectionLabel(result.start?.trace_direction || cable.trace_direction))}
+      ${this._traceRow("Branches", String(branches.length))}
+      ${tempCount ? `<div class="r3d-trace-note">${tempCount} rack${tempCount === 1 ? "" : "s"} placed temporarily for this trace.</div>` : ""}
+      ${warnings.length ? `<div class="r3d-trace-warning">${warnings.map((w) => escHtml(w.message || w)).join("<br>")}</div>` : ""}
+      <div class="r3d-info-actions">
+        <button class="r3d-info-btn" id="r3d-trace-clear">Clear Trace</button>
+        <button class="r3d-info-btn" id="r3d-trace-retry-override">Retry Override</button>
+      </div>
+      <div class="r3d-info-actions">
+        <button class="r3d-info-btn" id="r3d-export-branches">Export Branch CSV</button>
+        <button class="r3d-info-btn" id="r3d-export-hops">Export Hop CSV</button>
+      </div>
+      <div class="r3d-trace-branches">
+        ${branches.map((branch, idx) => this._renderTraceBranch(branch, idx)).join("")}
+      </div>
+    `;
+    panel.querySelector("#r3d-trace-clear")?.addEventListener("click", () => this._clearFullTrace());
+    panel.querySelector("#r3d-trace-retry-override")?.addEventListener("click", () => {
+      const start = result.start?.entry_end || this._activeTrace?.entryEnd || "a";
+      this._traceSignal(cable, start, true);
+    });
+    panel.querySelector("#r3d-export-branches")?.addEventListener("click", () => this._exportTraceBranches(result));
+    panel.querySelector("#r3d-export-hops")?.addEventListener("click", () => this._exportTraceHops(result));
+    panel.querySelectorAll("[data-open-cable]").forEach((btn) => {
+      btn.addEventListener("click", () => window.open(`/dcim/cables/${btn.dataset.openCable}/`, "_blank"));
+    });
+    panel.querySelectorAll("[data-open-device]").forEach((btn) => {
+      btn.addEventListener("click", () => window.open(`/dcim/devices/${btn.dataset.openDevice}/`, "_blank"));
+    });
+  }
+
+  _traceRow(label, value) {
+    if (!value) return "";
+    return `<div class="r3d-info-row"><span class="r3d-info-lbl">${escHtml(label)}</span><span class="r3d-info-val">${escHtml(value)}</span></div>`;
+  }
+
+  _renderTraceBranch(branch, idx) {
+    const terminal = branch.terminal || {};
+    const terminalText = terminal.device
+      ? `${terminal.device}:${terminal.port || ""}${terminal.signal ? ":" + terminal.signal : ""}`
+      : terminal.reason || "terminal";
+    return `<div class="r3d-trace-branch">
+      <div class="r3d-trace-branch-title">Branch ${idx + 1}<span>${escHtml(terminalText)}</span></div>
+      ${(branch.hops || []).map((hop, hopIdx) => this._renderTraceHop(hop, hopIdx)).join("")}
+      ${(branch.warnings || []).map((w) => `<div class="r3d-trace-warning">${escHtml(w.message || w)}</div>`).join("")}
+    </div>`;
+  }
+
+  _renderTraceHop(hop, idx) {
+    if (hop.type === "cable") {
+      return `<div class="r3d-trace-hop">
+        <strong>${idx + 1}. Cable #${escHtml(hop.cable_id)}</strong>
+        <span>${escHtml(hop.from_device || "A")}:${escHtml(hop.from_port || "")} to ${escHtml(hop.to_device || "B")}:${escHtml(hop.to_port || "")}</span>
+        <button class="r3d-trace-mini-btn" data-open-cable="${escHtml(hop.cable_id)}">Open</button>
+      </div>`;
+    }
+    return `<div class="r3d-trace-hop">
+      <strong>${idx + 1}. Internal</strong>
+      <span>${escHtml(hop.device || "")}: ${escHtml(hop.from_port || "")}:${escHtml(hop.from_signal || "")} to ${escHtml(hop.to_port || "")}:${escHtml(hop.to_signal || "")}</span>
+      ${hop.device_id ? `<button class="r3d-trace-mini-btn" data-open-device="${escHtml(hop.device_id)}">Open</button>` : ""}
+    </div>`;
+  }
+
+  _exportTraceBranches(result) {
+    const rows = [["trace_id", "branch_id", "terminal", "cable_ids", "device_ids", "warnings"]];
+    (result.branches || []).forEach((branch) => {
+      const t = branch.terminal || {};
+      rows.push([
+        result.trace_id || "",
+        branch.id || "",
+        t.device ? `${t.device}:${t.port || ""}:${t.signal || ""}` : t.reason || "",
+        (branch.cable_ids || []).join("|"),
+        (branch.device_ids || []).join("|"),
+        (branch.warnings || []).map((w) => w.message || w).join("|"),
+      ]);
+    });
+    downloadCsv(`trace-${result.trace_id || "branches"}.csv`, rows);
+  }
+
+  _exportTraceHops(result) {
+    const rows = [["trace_id", "branch_id", "sequence", "type", "from_device", "device", "to_device", "from_port", "from_signal", "to_port", "to_signal", "cable_id", "direction"]];
+    (result.hops || []).forEach((hop, idx) => {
+      rows.push([
+        result.trace_id || "",
+        hop.branch_id || "",
+        idx + 1,
+        hop.type || "",
+        hop.from_device || "",
+        hop.device || hop.to_device || "",
+        hop.to_device || "",
+        hop.from_port || "",
+        hop.from_signal || "",
+        hop.to_port || "",
+        hop.to_signal || "",
+        hop.cable_id || "",
+        hop.trace_direction || "",
+      ]);
+    });
+    downloadCsv(`trace-${result.trace_id || "hops"}-hops.csv`, rows);
+  }
+
+  _clearFullTrace() {
+    this._activeTrace = null;
+    this._tracePlacementState = null;
+    this._scene?.clearTraceVisuals?.();
+    const panel = document.getElementById("r3d-full-trace-panel");
+    if (panel) {
+      panel.innerHTML = `<div class="r3d-trace-note">Full trace follows saved cable direction unless override is checked.</div>`;
     }
   }
 
@@ -4084,19 +4502,30 @@ class AppController {
       (e) => e.cableData?.id === cableId,
     );
     if (entry) this._scene._cableManager.selectCable(entry.mesh);
+    const cable = entry?.cableData || {
+      id: cableId,
+      label: data.label || "",
+      type: data.type || "",
+      color: data.color || "",
+      barcode_a: data.barcode_a || "",
+      barcode_b: data.barcode_b || "",
+      a_terminations: [],
+      b_terminations: [],
+    };
 
     const label = data.label ? ` "${data.label}"` : "";
     if (data.signals.length <= 1) {
-      this._scene.startTrace(cableId);
-      BarcodeScanner.showToast(`Tracing cable #${cableId}${label}`, "success");
+      this._showCableInfo(cable);
+      this._traceSignal(cable, "a");
+      BarcodeScanner.showToast(`Tracing full path for cable #${cableId}${label}`, "success");
     } else {
       BarcodeScanner.showToast(
         `Cable #${cableId}${label} — select signals to trace`,
         "info",
       );
       showSignalModal(data, (selectedSignals) => {
-        // Each signal triggers the full trace animation on this cable
-        this._scene.startTrace(cableId);
+        this._showCableInfo(cable);
+        this._traceSignal(cable, "a");
       });
     }
   }

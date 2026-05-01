@@ -908,6 +908,122 @@
   }
   .r3d-trace-port { color: var(--r3d-text); font-family: monospace; }
   .r3d-trace-arrow { color: var(--r3d-accent); font-size: 12px; padding: 0 2px; }
+
+  .r3d-trace-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0 8px;
+    color: var(--r3d-text-dim);
+    font-size: 11px;
+  }
+
+  .r3d-trace-check input {
+    accent-color: var(--r3d-accent);
+  }
+
+  .r3d-full-trace-panel {
+    margin-top: 8px;
+    border-top: 1px solid var(--r3d-border);
+    padding-top: 8px;
+  }
+
+  .r3d-trace-loading,
+  .r3d-trace-note,
+  .r3d-trace-warning {
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .r3d-trace-loading {
+    color: var(--r3d-accent);
+    background: rgba(74, 158, 255, 0.09);
+  }
+
+  .r3d-trace-note {
+    color: var(--r3d-text-dim);
+    background: rgba(100, 116, 139, 0.12);
+  }
+
+  .r3d-trace-warning {
+    margin: 6px 0;
+    color: #b45309;
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+  }
+
+  #rack3d-root[data-theme="dark"] .r3d-trace-warning {
+    color: #fbbf24;
+  }
+
+  .r3d-trace-branches {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .r3d-trace-branch {
+    border: 1px solid var(--r3d-border);
+    border-radius: 4px;
+    padding: 6px;
+    background: rgba(74, 158, 255, 0.04);
+  }
+
+  .r3d-trace-branch-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--r3d-text);
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .r3d-trace-branch-title span {
+    color: var(--r3d-text-dim);
+    font-weight: 400;
+    text-align: right;
+  }
+
+  .r3d-trace-hop {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    border-top: 1px solid var(--r3d-border);
+    font-size: 11px;
+  }
+
+  .r3d-trace-hop strong {
+    color: var(--r3d-text);
+    white-space: nowrap;
+  }
+
+  .r3d-trace-hop span {
+    color: var(--r3d-text-dim);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .r3d-trace-mini-btn {
+    border: 1px solid var(--r3d-border);
+    border-radius: 3px;
+    background: var(--r3d-btn-bg);
+    color: var(--r3d-text);
+    font-size: 10px;
+    padding: 1px 5px;
+    cursor: pointer;
+  }
+
+  .r3d-trace-mini-btn:hover {
+    border-color: var(--r3d-accent);
+    background: var(--r3d-hover);
+  }
 </style>
 {% endblock head %}
 
@@ -1185,7 +1301,8 @@
 
   {# ── Cable right-click context menu ───────────────────── #}
   <div id="r3d-cable-ctx-menu" class="r3d-ctx-hidden">
-    <div class="r3d-ctx-item" data-action="traceSignal">⚡ Trace Signal</div>
+    <div class="r3d-ctx-item" data-action="traceA">⚡ Trace A to B</div>
+    <div class="r3d-ctx-item" data-action="traceB">⚡ Trace B to A</div>
     <div class="r3d-ctx-item" data-action="openCable">↗ Open in NetBox</div>
   </div>
 
@@ -1206,5 +1323,5 @@
 
 {% block javascript %}
 {{ block.super }}
-<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-rear-entry-branches-1"></script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-full-trace-3d-1"></script>
 {% endblock %}
