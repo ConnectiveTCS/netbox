@@ -1034,10 +1034,12 @@
         </div>
 
         <div class="r3d-config-section">
-          <span class="r3d-config-label">Rack U ruler</span>
+          <span class="r3d-config-label">Hover transparency</span>
           <div class="r3d-radio-group">
-            <label><input type="radio" name="ruler" value="yes" checked> Show</label>
-            <label><input type="radio" name="ruler" value="no"> Hide</label>
+            <label><input type="radio" name="hover-transparency" value="full"> Full cabinet</label>
+            <label><input type="radio" name="hover-transparency" value="doors" checked> Panels / doors</label>
+            <label><input type="radio" name="hover-transparency" value="channels"> Cable channels</label>
+            <label><input type="radio" name="hover-transparency" value="doors-channels"> Panels + channels</label>
           </div>
         </div>
 
@@ -1197,5 +1199,5 @@
 
 {% block javascript %}
 {{ block.super }}
-<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-cables"></script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/rack_3d.js' %}?v=20260501-rear-face"></script>
 {% endblock %}

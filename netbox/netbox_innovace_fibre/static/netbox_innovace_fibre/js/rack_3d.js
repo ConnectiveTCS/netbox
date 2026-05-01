@@ -17,8 +17,10 @@ const LABEL_SHOW_DIST = 60;
 const LS_SETTINGS = "iff_rack3d_settings";
 
 const DEPTH_MAP = { realistic: 28.0, flat: 4.0, schematic: 1.2 };
-// Side cable-routing channels added to each rack (15 cm per side, converted to scene-inches)
-const CABLE_CHANNEL_W = 15 / 25.4; // ≈ 5.91 scene-inches per side
+const FRONT_DEVICE_CLEARANCE = 3.5;
+const REAR_DEVICE_CLEARANCE = 2.5;
+// Side cable-routing channels added to each rack, converted from mm to scene-inches.
+const CABLE_CHANNEL_W = 90 / 25.4;
 
 // Cable rendering
 const CABLE_PATCH_RADIUS  = 0.18; // scene-inches — intra-rack patch/fibre
@@ -80,6 +82,19 @@ function themeColors(theme) {
 
 function orientToRad(o) {
   return { N: 0, E: Math.PI / 2, S: Math.PI, W: -Math.PI / 2 }[o] || 0;
+}
+
+function deviceClearanceForDepth(depth, side) {
+  if (depth >= 10) {
+    return side === "front" ? FRONT_DEVICE_CLEARANCE : REAR_DEVICE_CLEARANCE;
+  }
+  return depth * 0.08;
+}
+
+function deviceEnvelopeDepth(depth) {
+  const front = deviceClearanceForDepth(depth, "front");
+  const rear = deviceClearanceForDepth(depth, "rear");
+  return Math.max(depth - front - rear, depth * 0.5);
 }
 
 function getCsrfToken() {
@@ -521,6 +536,7 @@ class RackScene {
 
   // Fades or restores the rack frame/shell meshes for a given rack.
   _setRackFrameTransparency(rackId, transparent) {
+    const mode = this._settings?.hoverTransparency || "doors";
     for (const mesh of this._rackFrameMeshes) {
       if (mesh.userData.rackId !== rackId) continue;
       const mats = Array.isArray(mesh.material)
@@ -530,10 +546,26 @@ class RackScene {
         if (!m) return;
         // Skip the permanently-invisible front-face slot (flagged at build time)
         if (m.userData?.rackInvisible) return;
-        m.transparent = transparent;
-        m.opacity = transparent ? 0.15 : 1.0;
+        const shouldFade =
+          transparent && this._shouldFadeRackMaterial(m, mesh, mode);
+        m.transparent = shouldFade;
+        m.opacity = shouldFade ? 0.15 : 1.0;
       });
     }
+  }
+
+  _shouldFadeRackMaterial(material, mesh, mode) {
+    const group =
+      material.userData?.rackTransparencyGroup ||
+      mesh.userData.rackTransparencyGroup ||
+      "cabinet";
+    if (mode === "full") return true;
+    if (mode === "doors") return group === "door-panel";
+    if (mode === "channels") return group === "cable-channel";
+    if (mode === "doors-channels") {
+      return group === "door-panel" || group === "cable-channel";
+    }
+    return group === "door-panel";
   }
 
   _zoomToDevice(mesh) {
@@ -685,6 +717,10 @@ class RackScene {
       metalness: 0.22,
       roughness: 0.72,
     });
+    const rightSidePanelMat = shellMat.clone();
+    const leftSidePanelMat = shellMat.clone();
+    rightSidePanelMat.userData.rackTransparencyGroup = "door-panel";
+    leftSidePanelMat.userData.rackTransparencyGroup = "door-panel";
     const steelMat = new THREE.MeshStandardMaterial({
       color: colors.rail,
       metalness: 0.82,
@@ -701,20 +737,21 @@ class RackScene {
     });
     invisMat.userData = { rackInvisible: true }; // sentinel: never affected by hover-transparency
 
-    // ── Outer shell: solid sides/top/bottom/rear, open front ─────────────
+    // ── Outer shell: solid sides/top/bottom, open front/rear for doors ───
     // Face order: [+X(right), -X(left), +Y(top), -Y(bottom), +Z(front), -Z(rear)]
     const shellMats = [
-      shellMat,
-      shellMat,
+      rightSidePanelMat,
+      leftSidePanelMat,
       shellMat,
       shellMat,
       invisMat,
-      shellMat,
+      invisMat,
     ];
     // Helper: tags a mesh as a rack frame component for hover-transparency
-    const _regFrame = (m) => {
+    const _regFrame = (m, transparencyGroup = "cabinet") => {
       m.userData.rackId = rack.id;
       m.userData.isRackFrame = true;
+      m.userData.rackTransparencyGroup = transparencyGroup;
       this._rackFrameMeshes.push(m);
       return m;
     };
@@ -743,7 +780,7 @@ class RackScene {
         offset.y + totalH / 2,
         offset.z,
       );
-      target.add(_regFrame(ch));
+      target.add(_regFrame(ch, "cable-channel"));
       if (!parent) this._meshes.push(ch);
     }
     // Horizontal cable-ring bars every 4U for visual detail
@@ -766,7 +803,7 @@ class RackScene {
           offset.z,
         );
         tie.raycast = () => {}; // non-pickable
-        target.add(tie);
+        target.add(_regFrame(tie, "cable-channel"));
         if (!parent) this._meshes.push(tie);
       }
     }
@@ -810,7 +847,7 @@ class RackScene {
       bezMat,
     );
     mBTop.position.set(offset.x, offset.y + totalH - bezH / 2, bezFZ);
-    target.add(_regFrame(mBTop));
+    target.add(_regFrame(mBTop, "door-panel"));
     if (!parent) this._meshes.push(mBTop);
 
     const mBBot = new THREE.Mesh(
@@ -818,7 +855,7 @@ class RackScene {
       bezMat,
     );
     mBBot.position.set(offset.x, offset.y + bezH / 2, bezFZ);
-    target.add(_regFrame(mBBot));
+    target.add(_regFrame(mBBot, "door-panel"));
     if (!parent) this._meshes.push(mBBot);
 
     const mBLeft = new THREE.Mesh(
@@ -830,7 +867,7 @@ class RackScene {
       offset.y + totalH / 2,
       bezFZ,
     );
-    target.add(_regFrame(mBLeft));
+    target.add(_regFrame(mBLeft, "door-panel"));
     if (!parent) this._meshes.push(mBLeft);
 
     const mBRight = new THREE.Mesh(
@@ -842,8 +879,50 @@ class RackScene {
       offset.y + totalH / 2,
       bezFZ,
     );
-    target.add(_regFrame(mBRight));
+    target.add(_regFrame(mBRight, "door-panel"));
     if (!parent) this._meshes.push(mBRight);
+
+    // ── Rear door bezel: matching frame around a rear door opening ────────
+    const bezRZ = rearZ - bezD / 2;
+    const rBTop = new THREE.Mesh(
+      new THREE.BoxGeometry(outerW, bezH, bezD),
+      bezMat,
+    );
+    rBTop.position.set(offset.x, offset.y + totalH - bezH / 2, bezRZ);
+    target.add(_regFrame(rBTop, "door-panel"));
+    if (!parent) this._meshes.push(rBTop);
+
+    const rBBot = new THREE.Mesh(
+      new THREE.BoxGeometry(outerW, bezH, bezD),
+      bezMat,
+    );
+    rBBot.position.set(offset.x, offset.y + bezH / 2, bezRZ);
+    target.add(_regFrame(rBBot, "door-panel"));
+    if (!parent) this._meshes.push(rBBot);
+
+    const rBLeft = new THREE.Mesh(
+      new THREE.BoxGeometry(bezSW, totalH, bezD),
+      bezMat,
+    );
+    rBLeft.position.set(
+      offset.x - (outerW / 2 - bezSW / 2),
+      offset.y + totalH / 2,
+      bezRZ,
+    );
+    target.add(_regFrame(rBLeft, "door-panel"));
+    if (!parent) this._meshes.push(rBLeft);
+
+    const rBRight = new THREE.Mesh(
+      new THREE.BoxGeometry(bezSW, totalH, bezD),
+      bezMat,
+    );
+    rBRight.position.set(
+      offset.x + (outerW / 2 - bezSW / 2),
+      offset.y + totalH / 2,
+      bezRZ,
+    );
+    target.add(_regFrame(rBRight, "door-panel"));
+    if (!parent) this._meshes.push(rBRight);
 
     // ── Perforated front door ─────────────────────────────────────────────
     const doorW = outerW - bezSW * 2 + 0.05;
@@ -859,8 +938,23 @@ class RackScene {
     const doorGeo = new THREE.PlaneGeometry(doorW, doorH);
     const door = new THREE.Mesh(doorGeo, doorMat);
     door.position.set(offset.x, offset.y + totalH / 2, frontZ + 0.08);
-    target.add(_regFrame(door));
+    target.add(_regFrame(door, "door-panel"));
     if (!parent) this._meshes.push(door);
+
+    // ── Perforated split rear doors ───────────────────────────────────────
+    const rearDoorGap = 0.12;
+    const rearDoorW = (doorW - rearDoorGap) / 2;
+    const rearDoorGeo = new THREE.PlaneGeometry(rearDoorW, doorH);
+    for (const side of [-1, 1]) {
+      const rearDoor = new THREE.Mesh(rearDoorGeo, doorMat.clone());
+      rearDoor.position.set(
+        offset.x + side * (rearDoorW / 2 + rearDoorGap / 2),
+        offset.y + totalH / 2,
+        rearZ - 0.08,
+      );
+      target.add(_regFrame(rearDoor, "door-panel"));
+      if (!parent) this._meshes.push(rearDoor);
+    }
 
     // ── Door handle: left side ────────────────────────────────────────────
     const handleMat = new THREE.MeshStandardMaterial({
@@ -877,7 +971,7 @@ class RackScene {
       handleMat,
     );
     grip.position.set(handleX, offset.y + totalH / 2, handleFZ);
-    target.add(_regFrame(grip));
+    target.add(_regFrame(grip, "door-panel"));
     if (!parent) this._meshes.push(grip);
 
     for (const dy of [-1, 1]) {
@@ -890,104 +984,38 @@ class RackScene {
         offset.y + totalH / 2 + dy * (handleH2 / 2),
         handleFZ - 0.16,
       );
-      target.add(_regFrame(brkt));
+      target.add(_regFrame(brkt, "door-panel"));
       if (!parent) this._meshes.push(brkt);
     }
 
-    // ── U-number ruler strip ──────────────────────────────────────────────
-    if (settings.showRuler !== false) {
-      this._buildUnitRuler(rack, settings, offset, parent, totalH, depth);
-    }
-  }
+    // ── Rear split-door handles near the meeting edge ─────────────────────
+    const rearHandleZ = rearZ - 0.55;
+    const rearHandleInset = 0.36;
+    for (const side of [-1, 1]) {
+      const rearHandleX = offset.x + side * rearHandleInset;
+      const rearGrip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, handleH2, 0.22),
+        handleMat,
+      );
+      rearGrip.position.set(rearHandleX, offset.y + totalH / 2, rearHandleZ);
+      target.add(_regFrame(rearGrip, "door-panel"));
+      if (!parent) this._meshes.push(rearGrip);
 
-  _buildUnitRuler(rack, settings, offset, parent, totalH, depth) {
-    const target = parent || this._scene;
-    const isLight = settings.theme === "light";
-    const uCount = rack.u_height;
-    if (!uCount) return;
-
-    const rulerW = 2.2;
-    const uPx = 24;
-    const rulerPxW = 96;
-    const rulerPxH = Math.max(uCount * uPx, 4);
-
-    const c = document.createElement("canvas");
-    c.width = rulerPxW;
-    c.height = rulerPxH;
-    const ctx = c.getContext("2d");
-
-    ctx.fillStyle = isLight ? "#c8d2e4" : "#111620";
-    ctx.fillRect(0, 0, rulerPxW, rulerPxH);
-
-    ctx.strokeStyle = isLight ? "#8899bb" : "#2a3850";
-    ctx.lineWidth = 1;
-    ctx.fillStyle = isLight ? "#304263" : "#9aa8c2";
-    const fontSize = Math.max(8, Math.min(14, uPx * 0.58));
-    ctx.font = `600 ${fontSize}px "Segoe UI", "Roboto Mono", monospace`;
-    ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-    const textPad = 14;
-
-    for (let i = 0; i < uCount; i++) {
-      // canvas y=0 is world top (tex.flipY=false).
-      // desc_units=false: world top = high unit → uNum = starting_unit + uCount-1-i
-      // desc_units=true:  world top = low unit  → uNum = starting_unit + i
-      const uNum = rack.desc_units
-        ? rack.starting_unit + i
-        : rack.starting_unit + (uCount - 1 - i);
-      const y = i * uPx;
-      // subtle alternating band to improve readability at high U counts
-      if (i % 2 === 0) {
-        ctx.fillStyle = isLight
-          ? "rgba(255,255,255,0.18)"
-          : "rgba(255,255,255,0.03)";
-        ctx.fillRect(0, y, rulerPxW, uPx);
-        ctx.fillStyle = isLight ? "#304263" : "#9aa8c2";
-      }
-      // separator line
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(rulerPxW, y);
-      ctx.stroke();
-      // tick mark
-      ctx.beginPath();
-      ctx.moveTo(rulerPxW - 12, y + uPx / 2);
-      ctx.lineTo(rulerPxW - 3, y + uPx / 2);
-      ctx.stroke();
-      // U number (skip every other if tightly packed)
-      if (uPx >= 14 || i % 2 === 0) {
-        ctx.fillText(`${uNum}`, rulerPxW - textPad, y + uPx / 2);
+      for (const dy of [-1, 1]) {
+        const rearBrkt = new THREE.Mesh(
+          new THREE.BoxGeometry(0.42, 0.18, 0.42),
+          handleMat,
+        );
+        rearBrkt.position.set(
+          rearHandleX,
+          offset.y + totalH / 2 + dy * (handleH2 / 2),
+          rearHandleZ + 0.16,
+        );
+        target.add(_regFrame(rearBrkt, "door-panel"));
+        if (!parent) this._meshes.push(rearBrkt);
       }
     }
 
-    // bottom border line
-    ctx.beginPath();
-    ctx.moveTo(0, rulerPxH - 1);
-    ctx.lineTo(rulerPxW, rulerPxH - 1);
-    ctx.stroke();
-
-    const tex = new THREE.CanvasTexture(c);
-    tex.flipY = false; // canvas top → world top
-    tex.colorSpace = THREE.SRGBColorSpace;
-    this._textures.push(tex);
-
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex,
-      side: THREE.FrontSide,
-    });
-    const geo = new THREE.PlaneGeometry(rulerW, totalH);
-    const ruler = new THREE.Mesh(geo, mat);
-    // Place flush with the front face, to the left of the posts, facing the viewer (+Z)
-    ruler.position.set(
-      offset.x - RACK_WIDTH / 2 - POST_W - rulerW / 2 - 0.05,
-      offset.y + totalH / 2,
-      offset.z + depth / 2 - 0.05,
-    );
-    target.add(ruler);
-    ruler.userData.rackId = rack.id;
-    ruler.userData.isRackFrame = true;
-    this._rackFrameMeshes.push(ruler);
-    if (!parent) this._meshes.push(ruler);
   }
 
   _makePerforatedDoorMat(doorH, doorW, settings) {
@@ -1026,6 +1054,9 @@ class RackScene {
     const target = parent || this._scene;
     const sc = parseFloat(settings.scale) || 1;
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
+    const frontDeviceZ = offset.z + depth / 2 - deviceClearanceForDepth(depth, "front");
+    const rearDeviceZ = offset.z - depth / 2 + deviceClearanceForDepth(depth, "rear");
+    const fullDepthDeviceDepth = deviceEnvelopeDepth(depth);
     const face = settings.face || "both";
     const loader = new THREE.TextureLoader();
     const colors = themeColors(settings.theme);
@@ -1042,7 +1073,7 @@ class RackScene {
         continue;
 
       const deviceH = dev.u_height * U_SCALE_BASE * sc;
-      const deviceDepth = dev.is_full_depth ? depth : depth * 0.55;
+      const deviceDepth = dev.is_full_depth ? fullDepthDeviceDepth : fullDepthDeviceDepth * 0.55;
       const yBottom = this._calcY(dev, rack, sc);
 
       // Align device Z with its mounting rail:
@@ -1053,9 +1084,9 @@ class RackScene {
       if (dev.is_full_depth) {
         deviceZ = offset.z;
       } else if (dev.face === "front") {
-        deviceZ = offset.z + depth / 2 - deviceDepth / 2;
+        deviceZ = frontDeviceZ - deviceDepth / 2;
       } else {
-        deviceZ = offset.z - depth / 2 + deviceDepth / 2;
+        deviceZ = rearDeviceZ + deviceDepth / 2;
       }
 
       const geo = new THREE.BoxGeometry(
@@ -1265,7 +1296,10 @@ class RackScene {
   }
 
   _faceMat(dev, side, loader, settings, colors) {
-    const url = side === "front" ? dev.front_image : dev.rear_image;
+    const mountedRear = dev.face === "rear" && !dev.is_full_depth;
+    const url = mountedRear
+      ? (side === "rear" ? dev.front_image || dev.rear_image : dev.rear_image || dev.front_image)
+      : (side === "front" ? dev.front_image : dev.rear_image);
     if (settings.colorBy === "image") {
       if (url) {
         const tex = loader.load(url);
@@ -1321,7 +1355,7 @@ class RackScene {
     const slotH = U_SCALE_BASE * sc;
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
     // Blank panels sit flush with the front (+Z) mounting rail, same as front-mounted devices
-    const blankZ = offset.z + depth / 2 - BLANK_DEPTH / 2;
+    const blankZ = offset.z + depth / 2 - deviceClearanceForDepth(depth, "front") - BLANK_DEPTH / 2;
 
     for (
       let u = rack.starting_unit;
@@ -1444,25 +1478,28 @@ class RackScene {
   _buildDeviceWorldMap(devices, rack, settings, offset) {
     const sc    = parseFloat(settings.scale) || 1;
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
+    const frontDeviceZ = offset.z + depth / 2 - deviceClearanceForDepth(depth, "front");
+    const rearDeviceZ = offset.z - depth / 2 + deviceClearanceForDepth(depth, "rear");
+    const fullDepthDeviceDepth = deviceEnvelopeDepth(depth);
     const map   = new Map();
     for (const dev of devices) {
       const yBottom = this._calcY(dev, rack, sc);
       const deviceH = dev.u_height * U_SCALE_BASE * sc;
-      const deviceDepth = dev.is_full_depth ? depth : depth * 0.55;
+      const deviceDepth = dev.is_full_depth ? fullDepthDeviceDepth : fullDepthDeviceDepth * 0.55;
       let deviceZ;
       if (dev.is_full_depth) {
         deviceZ = offset.z;
       } else if (dev.face === "front") {
-        deviceZ = offset.z + depth / 2 - deviceDepth / 2;
+        deviceZ = frontDeviceZ - deviceDepth / 2;
       } else {
-        deviceZ = offset.z - depth / 2 + deviceDepth / 2;
+        deviceZ = rearDeviceZ + deviceDepth / 2;
       }
       map.set(dev.id, {
         worldX:       offset.x,
         worldYBot:    offset.y + yBottom,
         worldYTop:    offset.y + yBottom + deviceH,
-        frontFaceZ:   offset.z + depth / 2,
-        rearFaceZ:    offset.z - depth / 2,
+        frontFaceZ:   deviceZ + deviceDepth / 2,
+        rearFaceZ:    deviceZ - deviceDepth / 2,
         rackCenterZ:  offset.z,
         rackOffsetX:  offset.x,
         cable_exit_side: dev.cable_exit_side || 'left',
@@ -2424,9 +2461,9 @@ class AppController {
         document
           .querySelector(`input[name="empty"][value="${s.empty}"]`)
           ?.click();
-      if (s.ruler)
+      if (s.hoverTransparency)
         document
-          .querySelector(`input[name="ruler"][value="${s.ruler}"]`)
+          .querySelector(`input[name="hover-transparency"][value="${s.hoverTransparency}"]`)
           ?.click();
       if (s.railFL) document.getElementById("cfg-rail-fl").value = s.railFL;
       if (s.railFR) document.getElementById("cfg-rail-fr").value = s.railFR;
@@ -2463,7 +2500,7 @@ class AppController {
         labels: s.labels,
         colorby: s.colorBy,
         empty: s.showEmpty ? "yes" : "no",
-        ruler: s.showRuler ? "yes" : "no",
+        hoverTransparency: s.hoverTransparency,
         railFL: s.railFL,
         railFR: s.railFR,
         railRL: s.railRL,
@@ -3107,8 +3144,8 @@ class AppController {
         "image",
       showEmpty:
         document.querySelector('input[name="empty"]:checked')?.value === "yes",
-      showRuler:
-        document.querySelector('input[name="ruler"]:checked')?.value !== "no",
+      hoverTransparency:
+        document.querySelector('input[name="hover-transparency"]:checked')?.value || "doors",
       face:
         document.querySelector(".r3d-face-btn.active")?.dataset.face || "both",
       railFL: parseFloat(document.getElementById("cfg-rail-fl")?.value) || 2,
