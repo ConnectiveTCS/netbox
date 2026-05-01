@@ -1,0 +1,43 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}Import Manager{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Import Manager</h2>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>
+        <i class="mdi mdi-server"></i>
+        Devices
+      </span>
+      <span class="badge text-bg-secondary">CSV</span>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">
+        Download a NetBox-compatible device import template with sample datacenter rows.
+      </p>
+
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <a class="btn btn-primary" href="{% url 'plugins:netbox_innovace_fibre:device_import_template_csv' %}">
+          <i class="mdi mdi-download"></i>
+          Download device template
+        </a>
+        {% if device_import_url %}
+          <a class="btn btn-outline-secondary" href="{{ device_import_url }}">
+            <i class="mdi mdi-upload"></i>
+            Open NetBox device import
+          </a>
+        {% endif %}
+      </div>
+
+      <div class="small text-muted">
+        Template columns: {{ device_import_template_fields|join:", " }}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

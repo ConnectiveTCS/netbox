@@ -7,15 +7,45 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.views import View
 
+from dcim.forms.bulk_import import DeviceImportForm
 from dcim.models import Cable, CableTermination, Device, DeviceType
 
 from .forms import DeviceSignalRoutingForm
 from .models import DeviceSignalRouting, SignalRouting
 from .tables import DeviceCustomMappingTable
 from .tracer import trace_signal_path, trace_signal_path_for_device
+
+
+DEVICE_IMPORT_TEMPLATE_FIELDS = tuple(DeviceImportForm.Meta.fields)
+DEVICE_IMPORT_TEMPLATE_ROWS = (
+    {
+        'name': 'dc1-leaf-01',
+        'role': 'Leaf Switch',
+        'manufacturer': 'Innovace',
+        'device_type': 'Leaf Switch 48x25G',
+        'status': 'active',
+        'site': 'Datacenter 1',
+        'rack': 'R101',
+        'position': '42',
+        'face': 'front',
+        'description': 'Sample leaf switch',
+    },
+    {
+        'name': 'dc1-patch-01',
+        'role': 'Patch Panel',
+        'manufacturer': 'Innovace',
+        'device_type': 'Fibre Patch Panel 1U',
+        'status': 'active',
+        'site': 'Datacenter 1',
+        'rack': 'R101',
+        'position': '41',
+        'face': 'front',
+        'description': 'Sample fibre patch panel',
+    },
+)
 
 
 def _safe_image_url(image_field):
@@ -329,6 +359,38 @@ class BarcodeManagerView(LoginRequiredMixin, View):
 
     def get(self, request):
         return render(request, self.template_name)
+
+
+class ImportManagerView(LoginRequiredMixin, View):
+    template_name = 'netbox_innovace_fibre/import_manager.html'
+
+    def get(self, request):
+        try:
+            device_import_url = reverse('dcim:device_bulk_import')
+        except NoReverseMatch:
+            device_import_url = None
+
+        return render(
+            request,
+            self.template_name,
+            {
+                'device_import_template_fields': DEVICE_IMPORT_TEMPLATE_FIELDS,
+                'device_import_url': device_import_url,
+            },
+        )
+
+
+class DeviceImportTemplateCsvView(LoginRequiredMixin, View):
+    def get(self, request):
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="innovace_device_import_template.csv"'
+
+        writer = csv.DictWriter(response, fieldnames=DEVICE_IMPORT_TEMPLATE_FIELDS)
+        writer.writeheader()
+        for row in DEVICE_IMPORT_TEMPLATE_ROWS:
+            writer.writerow({field: row.get(field, '') for field in DEVICE_IMPORT_TEMPLATE_FIELDS})
+
+        return response
 
 
 class BarcodeCsvImportView(LoginRequiredMixin, View):

@@ -21,4 +21,6 @@ urlpatterns = [
     path('barcode-manager/', views.BarcodeManagerView.as_view(), name='barcode_manager'),
     path('barcode-manager/import/', views.BarcodeCsvImportView.as_view(), name='barcode_csv_import'),
     path('barcode-manager/export/', views.BarcodeCsvExportView.as_view(), name='barcode_csv_export'),
+    path('import-manager/', views.ImportManagerView.as_view(), name='import_manager'),
+    path('import-manager/device-template.csv', views.DeviceImportTemplateCsvView.as_view(), name='device_import_template_csv'),
 ]

@@ -9,6 +9,8 @@ import { BarcodeScanner, showSignalModal } from "./barcode_scanner.js";
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const U_SCALE_BASE = 1.75;
+const RACK_TOP_CLEARANCE_U = 1;
+const RACK_STAND_HEIGHT_U = 0.5;
 const RACK_WIDTH = 19.0;
 const POST_W = 0.5;
 const RAIL_H = 0.25;
@@ -113,6 +115,30 @@ function deviceEnvelopeDepth(depth) {
   const front = deviceClearanceForDepth(depth, "front");
   const rear = deviceClearanceForDepth(depth, "rear");
   return Math.max(depth - front - rear, depth * 0.5);
+}
+
+function rackMountHeight(rack, sc) {
+  return rack.u_height * U_SCALE_BASE * sc;
+}
+
+function rackTopClearance(sc) {
+  return RACK_TOP_CLEARANCE_U * U_SCALE_BASE * sc;
+}
+
+function rackStandHeight(sc) {
+  return RACK_STAND_HEIGHT_U * U_SCALE_BASE * sc;
+}
+
+function rackShellHeight(rack, sc) {
+  return rackMountHeight(rack, sc) + rackTopClearance(sc);
+}
+
+function rackCabinetBaseY(offset, sc) {
+  return offset.y + rackStandHeight(sc);
+}
+
+function rackVisualHeight(rack, sc) {
+  return rackStandHeight(sc) + rackShellHeight(rack, sc);
 }
 
 function getCsrfToken() {
@@ -321,7 +347,7 @@ class RackScene {
       if (settings.showEmpty) this._buildEmptySlots(rd, settings, zero, group);
       // Rack name label floating above the cabinet
       const rackSc = parseFloat(settings.scale) || 1;
-      const rackTop = rd.rack.u_height * U_SCALE_BASE * rackSc + 2.0;
+      const rackTop = rackVisualHeight(rd.rack, rackSc) + 2.0;
       const nameDiv = document.createElement("div");
       nameDiv.className = "r3d-rack-label";
       nameDiv.textContent = rd.rack.name;
@@ -348,7 +374,7 @@ class RackScene {
 
   resetCamera(rack, settings) {
     const sc = parseFloat(settings.scale) || 1;
-    const totalH = rack.u_height * U_SCALE_BASE * sc;
+    const totalH = rackVisualHeight(rack, sc);
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
     const target = new THREE.Vector3(0, totalH * 0.5, 0);
     const dist = Math.max(totalH, RACK_WIDTH) * 1.6 + depth;
@@ -831,7 +857,9 @@ class RackScene {
   _buildRackFrame(rack, settings, offset, parent) {
     const target = parent || this._scene;
     const sc = parseFloat(settings.scale) || 1;
-    const totalH = rack.u_height * U_SCALE_BASE * sc;
+    const totalH = rackShellHeight(rack, sc);
+    const baseY = rackCabinetBaseY(offset, sc);
+    const standH = rackStandHeight(sc);
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
     const colors = themeColors(settings.theme);
     const showDoors = settings.showDoors !== false;
@@ -889,9 +917,20 @@ class RackScene {
 
     const shellGeo = new THREE.BoxGeometry(totalW, totalH, depth);
     const shell = new THREE.Mesh(shellGeo, shellMats);
-    shell.position.set(offset.x, offset.y + totalH / 2, offset.z);
+    shell.position.set(offset.x, baseY + totalH / 2, offset.z);
     target.add(_regFrame(shell));
     if (!parent) this._meshes.push(shell);
+
+    this._buildRackLevelingFeet({
+      target,
+      settings,
+      offset,
+      parent,
+      outerW,
+      depth,
+      standH,
+      regFrame: _regFrame,
+    });
 
     // ── Cable management side channels ────────────────────────────────────
     const cableChMat = new THREE.MeshStandardMaterial({
@@ -908,7 +947,7 @@ class RackScene {
       const ch = new THREE.Mesh(chGeo, cableChMat);
       ch.position.set(
         offset.x + side * (outerW / 2 + CABLE_CHANNEL_W / 2),
-        offset.y + totalH / 2,
+        baseY + totalH / 2,
         offset.z,
       );
       target.add(_regFrame(ch, "cable-channel"));
@@ -925,7 +964,7 @@ class RackScene {
       0.12,
       depth * 0.74,
     );
-    for (let gy = offset.y; gy <= offset.y + totalH; gy += U_SCALE_BASE * 4) {
+    for (let gy = baseY; gy <= baseY + totalH; gy += U_SCALE_BASE * 4) {
       for (const side of [-1, 1]) {
         const tie = new THREE.Mesh(tieBarGeo, cableTieMat);
         tie.position.set(
@@ -953,7 +992,7 @@ class RackScene {
     const vRailGeo = new THREE.BoxGeometry(POST_W, totalH - RAIL_H * 2, POST_W);
     for (const { x, z } of rPositions) {
       const m = new THREE.Mesh(vRailGeo, steelMat);
-      m.position.set(offset.x + x, offset.y + totalH / 2, z);
+      m.position.set(offset.x + x, baseY + totalH / 2, z);
       target.add(_regFrame(m));
       if (!parent) this._meshes.push(m);
     }
@@ -962,7 +1001,7 @@ class RackScene {
     const crossGeo = new THREE.BoxGeometry(outerW, RAIL_H, depth * 0.92);
     for (const y of [RAIL_H / 2, totalH - RAIL_H / 2]) {
       const m = new THREE.Mesh(crossGeo, bezMat);
-      m.position.set(offset.x, offset.y + y, offset.z);
+      m.position.set(offset.x, baseY + y, offset.z);
       target.add(_regFrame(m));
       if (!parent) this._meshes.push(m);
     }
@@ -977,7 +1016,7 @@ class RackScene {
       new THREE.BoxGeometry(outerW, bezH, bezD),
       bezMat,
     );
-    mBTop.position.set(offset.x, offset.y + totalH - bezH / 2, bezFZ);
+    mBTop.position.set(offset.x, baseY + totalH - bezH / 2, bezFZ);
     target.add(_regFrame(mBTop, "door-panel"));
     if (!parent) this._meshes.push(mBTop);
 
@@ -985,7 +1024,7 @@ class RackScene {
       new THREE.BoxGeometry(outerW, bezH, bezD),
       bezMat,
     );
-    mBBot.position.set(offset.x, offset.y + bezH / 2, bezFZ);
+    mBBot.position.set(offset.x, baseY + bezH / 2, bezFZ);
     target.add(_regFrame(mBBot, "door-panel"));
     if (!parent) this._meshes.push(mBBot);
 
@@ -995,7 +1034,7 @@ class RackScene {
     );
     mBLeft.position.set(
       offset.x - (outerW / 2 - bezSW / 2),
-      offset.y + totalH / 2,
+      baseY + totalH / 2,
       bezFZ,
     );
     target.add(_regFrame(mBLeft, "door-panel"));
@@ -1007,7 +1046,7 @@ class RackScene {
     );
     mBRight.position.set(
       offset.x + (outerW / 2 - bezSW / 2),
-      offset.y + totalH / 2,
+      baseY + totalH / 2,
       bezFZ,
     );
     target.add(_regFrame(mBRight, "door-panel"));
@@ -1019,7 +1058,7 @@ class RackScene {
       new THREE.BoxGeometry(outerW, bezH, bezD),
       bezMat,
     );
-    rBTop.position.set(offset.x, offset.y + totalH - bezH / 2, bezRZ);
+    rBTop.position.set(offset.x, baseY + totalH - bezH / 2, bezRZ);
     target.add(_regFrame(rBTop, "door-panel"));
     if (!parent) this._meshes.push(rBTop);
 
@@ -1027,7 +1066,7 @@ class RackScene {
       new THREE.BoxGeometry(outerW, bezH, bezD),
       bezMat,
     );
-    rBBot.position.set(offset.x, offset.y + bezH / 2, bezRZ);
+    rBBot.position.set(offset.x, baseY + bezH / 2, bezRZ);
     target.add(_regFrame(rBBot, "door-panel"));
     if (!parent) this._meshes.push(rBBot);
 
@@ -1037,7 +1076,7 @@ class RackScene {
     );
     rBLeft.position.set(
       offset.x - (outerW / 2 - bezSW / 2),
-      offset.y + totalH / 2,
+      baseY + totalH / 2,
       bezRZ,
     );
     target.add(_regFrame(rBLeft, "door-panel"));
@@ -1049,7 +1088,7 @@ class RackScene {
     );
     rBRight.position.set(
       offset.x + (outerW / 2 - bezSW / 2),
-      offset.y + totalH / 2,
+      baseY + totalH / 2,
       bezRZ,
     );
     target.add(_regFrame(rBRight, "door-panel"));
@@ -1068,7 +1107,7 @@ class RackScene {
         });
     const doorGeo = new THREE.PlaneGeometry(doorW, doorH);
     const door = new THREE.Mesh(doorGeo, doorMat);
-    door.position.set(offset.x, offset.y + totalH / 2, frontZ + 0.08);
+    door.position.set(offset.x, baseY + totalH / 2, frontZ + 0.08);
     target.add(_regFrame(door, "door-panel"));
     if (!parent) this._meshes.push(door);
 
@@ -1080,7 +1119,7 @@ class RackScene {
       const rearDoor = new THREE.Mesh(rearDoorGeo, doorMat.clone());
       rearDoor.position.set(
         offset.x + side * (rearDoorW / 2 + rearDoorGap / 2),
-        offset.y + totalH / 2,
+        baseY + totalH / 2,
         rearZ - 0.08,
       );
       target.add(_regFrame(rearDoor, "door-panel"));
@@ -1101,7 +1140,7 @@ class RackScene {
       new THREE.BoxGeometry(0.26, handleH2, 0.26),
       handleMat,
     );
-    grip.position.set(handleX, offset.y + totalH / 2, handleFZ);
+    grip.position.set(handleX, baseY + totalH / 2, handleFZ);
     target.add(_regFrame(grip, "door-panel"));
     if (!parent) this._meshes.push(grip);
 
@@ -1112,7 +1151,7 @@ class RackScene {
       );
       brkt.position.set(
         handleX,
-        offset.y + totalH / 2 + dy * (handleH2 / 2),
+        baseY + totalH / 2 + dy * (handleH2 / 2),
         handleFZ - 0.16,
       );
       target.add(_regFrame(brkt, "door-panel"));
@@ -1128,7 +1167,7 @@ class RackScene {
         new THREE.BoxGeometry(0.22, handleH2, 0.22),
         handleMat,
       );
-      rearGrip.position.set(rearHandleX, offset.y + totalH / 2, rearHandleZ);
+      rearGrip.position.set(rearHandleX, baseY + totalH / 2, rearHandleZ);
       target.add(_regFrame(rearGrip, "door-panel"));
       if (!parent) this._meshes.push(rearGrip);
 
@@ -1139,11 +1178,55 @@ class RackScene {
         );
         rearBrkt.position.set(
           rearHandleX,
-          offset.y + totalH / 2 + dy * (handleH2 / 2),
+          baseY + totalH / 2 + dy * (handleH2 / 2),
           rearHandleZ + 0.16,
         );
         target.add(_regFrame(rearBrkt, "door-panel"));
         if (!parent) this._meshes.push(rearBrkt);
+      }
+    }
+  }
+
+  _buildRackLevelingFeet({
+    target,
+    settings,
+    offset,
+    parent,
+    outerW,
+    depth,
+    standH,
+    regFrame,
+  }) {
+    if (standH <= 0) return;
+    const isLight = settings.theme === "light";
+    const footMat = new THREE.MeshStandardMaterial({
+      color: isLight ? 0x8b96a8 : 0x4c5666,
+      metalness: 0.78,
+      roughness: 0.24,
+    });
+    const padMat = new THREE.MeshStandardMaterial({
+      color: isLight ? 0x5b6472 : 0x2d3440,
+      metalness: 0.62,
+      roughness: 0.34,
+    });
+    const shaftH = Math.max(standH * 0.72, 0.1);
+    const padH = Math.max(standH - shaftH, 0.08);
+    const shaftGeo = new THREE.CylinderGeometry(0.16, 0.16, shaftH, 12);
+    const padGeo = new THREE.CylinderGeometry(0.38, 0.42, padH, 16);
+    const xs = [offset.x - outerW / 2 + 1.15, offset.x + outerW / 2 - 1.15];
+    const zs = [offset.z - depth / 2 + 1.1, offset.z + depth / 2 - 1.1];
+
+    for (const x of xs) {
+      for (const z of zs) {
+        const shaft = new THREE.Mesh(shaftGeo, footMat);
+        shaft.position.set(x, offset.y + padH + shaftH / 2, z);
+        target.add(regFrame(shaft));
+        if (!parent) this._meshes.push(shaft);
+
+        const pad = new THREE.Mesh(padGeo, padMat);
+        pad.position.set(x, offset.y + padH / 2, z);
+        target.add(regFrame(pad));
+        if (!parent) this._meshes.push(pad);
       }
     }
   }
@@ -1183,6 +1266,7 @@ class RackScene {
   _buildDevices(devices, rack, settings, offset, parent) {
     const target = parent || this._scene;
     const sc = parseFloat(settings.scale) || 1;
+    const baseY = rackCabinetBaseY(offset, sc);
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
     const frontDeviceZ =
       offset.z + depth / 2 - deviceClearanceForDepth(depth, "front");
@@ -1238,7 +1322,7 @@ class RackScene {
       ];
 
       const mesh = new THREE.Mesh(geo, materials);
-      mesh.position.set(offset.x, offset.y + yBottom + deviceH / 2, deviceZ);
+      mesh.position.set(offset.x, baseY + yBottom + deviceH / 2, deviceZ);
       mesh.userData = { deviceId: dev.id, deviceData: dev };
       target.add(mesh);
       if (!parent) this._meshes.push(mesh);
@@ -1481,6 +1565,7 @@ class RackScene {
     const target = parent || this._scene;
     const { rack, devices } = rackData;
     const sc = parseFloat(settings.scale) || 1;
+    const baseY = rackCabinetBaseY(offset, sc);
     const colors = themeColors(settings.theme);
 
     const occupied = new Set();
@@ -1520,7 +1605,7 @@ class RackScene {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(
         offset.x,
-        offset.y + this._calcYFromUnit(u, rack, sc) + slotH / 2,
+        baseY + this._calcYFromUnit(u, rack, sc) + slotH / 2,
         blankZ,
       );
       target.add(m);
@@ -1649,9 +1734,7 @@ class RackScene {
     const rwMap = new Map();
     rwMap.set(rack.id, {
       offsetX: offset.x,
-      topY:
-        offset.y +
-        rack.u_height * U_SCALE_BASE * (parseFloat(settings.scale) || 1),
+      topY: offset.y + rackVisualHeight(rack, parseFloat(settings.scale) || 1),
       inter_rack_exit_side: rack.inter_rack_exit_side || "right",
     });
     this._cableManager.build(cables, dwMap, rwMap);
@@ -1684,7 +1767,7 @@ class RackScene {
 
       rwMap.set(rd.rack.id, {
         offsetX: worldOffset.x,
-        topY: worldOffset.y + rd.rack.u_height * U_SCALE_BASE * sc,
+        topY: worldOffset.y + rackVisualHeight(rd.rack, sc),
         centerZ: worldOffset.z,
         inter_rack_exit_side: rd.rack.inter_rack_exit_side || "right",
       });
@@ -1702,6 +1785,7 @@ class RackScene {
 
   _buildDeviceWorldMap(devices, rack, settings, offset) {
     const sc = parseFloat(settings.scale) || 1;
+    const baseY = rackCabinetBaseY(offset, sc);
     const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
     const frontDeviceZ =
       offset.z + depth / 2 - deviceClearanceForDepth(depth, "front");
@@ -1735,8 +1819,8 @@ class RackScene {
 
       map.set(dev.id, {
         worldX: offset.x,
-        worldYBot: offset.y + yBottom,
-        worldYTop: offset.y + yBottom + deviceH,
+        worldYBot: baseY + yBottom,
+        worldYTop: baseY + yBottom + deviceH,
         frontFaceZ: deviceZ + deviceDepth / 2,
         rearFaceZ: deviceZ - deviceDepth / 2,
         logicalFrontFaceZ,
@@ -1751,6 +1835,7 @@ class RackScene {
 
       this._addDeviceBayWorldMapEntries(map, dev, {
         offset,
+        baseY,
         yBottom,
         deviceH,
         deviceDepth,
@@ -1823,9 +1908,9 @@ class RackScene {
       map.set(bay.installed_device_id, {
         worldX: geom.offset.x + localX,
         worldYBot:
-          geom.offset.y + geom.yBottom + geom.deviceH / 2 + localY - bayH / 2,
+          geom.baseY + geom.yBottom + geom.deviceH / 2 + localY - bayH / 2,
         worldYTop:
-          geom.offset.y + geom.yBottom + geom.deviceH / 2 + localY + bayH / 2,
+          geom.baseY + geom.yBottom + geom.deviceH / 2 + localY + bayH / 2,
         frontFaceZ: faceZ,
         rearFaceZ: faceZ,
         logicalFrontFaceZ: faceZ,

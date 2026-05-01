@@ -24,6 +24,10 @@ menu = PluginMenu(
                 link='plugins:netbox_innovace_fibre:barcode_manager',
                 link_text='Barcode Manager',
             ),
+            PluginMenuItem(
+                link='plugins:netbox_innovace_fibre:import_manager',
+                link_text='Import Manager',
+            ),
         )),
     ),
     icon_class='mdi mdi-lan',
