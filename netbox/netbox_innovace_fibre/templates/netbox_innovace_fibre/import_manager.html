@@ -1,9 +1,56 @@
 {% extends 'base/layout.html' %}
+{% load static %}
 
 {% block title %}Import Manager{% endblock %}
 
+{% block head %}
+{{ block.super }}
+<style>
+  #iff-import-manager .iff-table-wrap {
+    overflow-x: auto;
+  }
+
+  #iff-device-table {
+    min-width: 1500px;
+  }
+
+  #iff-device-table th {
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  #iff-device-table td {
+    vertical-align: middle;
+    min-width: 120px;
+  }
+
+  #iff-device-table td.iff-col-name,
+  #iff-device-table td.iff-col-description {
+    min-width: 180px;
+  }
+
+  #iff-device-table input,
+  #iff-device-table select {
+    min-width: 100%;
+  }
+
+  #iff-device-table .iff-row-status {
+    min-width: 180px;
+    font-size: 12px;
+  }
+
+  #iff-device-table tr.iff-created {
+    --bs-table-bg: var(--bs-success-bg-subtle);
+  }
+
+  #iff-device-table tr.iff-error {
+    --bs-table-bg: var(--bs-danger-bg-subtle);
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-3">
+<div class="container-fluid py-3" id="iff-import-manager">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">Import Manager</h2>
   </div>
@@ -18,13 +65,25 @@
     </div>
     <div class="card-body">
       <p class="text-muted">
-        Download a NetBox-compatible device import template with sample datacenter rows.
+        Create devices in bulk from an editable table, or download a NetBox-compatible device import template.
       </p>
 
       <div class="d-flex flex-wrap gap-2 mb-3">
-        <a class="btn btn-primary" href="{% url 'plugins:netbox_innovace_fibre:device_import_template_csv' %}">
+        <button class="btn btn-outline-secondary" type="button" id="iff-add-row">
+          <i class="mdi mdi-plus"></i>
+          Add row
+        </button>
+        <button class="btn btn-primary" type="button" id="iff-bulk-create">
+          <i class="mdi mdi-upload"></i>
+          Bulk Create
+        </button>
+        <button class="btn btn-outline-secondary" type="button" id="iff-clear-completed">
+          <i class="mdi mdi-check"></i>
+          Clear completed
+        </button>
+        <a class="btn btn-outline-secondary" href="{% url 'plugins:netbox_innovace_fibre:device_import_template_csv' %}">
           <i class="mdi mdi-download"></i>
-          Download device template
+          Download template
         </a>
         {% if device_import_url %}
           <a class="btn btn-outline-secondary" href="{{ device_import_url }}">
@@ -34,10 +93,39 @@
         {% endif %}
       </div>
 
-      <div class="small text-muted">
-        Template columns: {{ device_import_template_fields|join:", " }}
+      <div class="iff-table-wrap border rounded mb-3">
+        <table class="table table-sm table-hover mb-0 align-middle" id="iff-device-table">
+          <thead>
+            <tr>
+              <th style="width: 44px">#</th>
+              {% for field in device_bulk_create_fields %}
+                <th>{{ field }}</th>
+              {% endfor %}
+              <th>Status</th>
+              <th style="width: 56px"></th>
+            </tr>
+          </thead>
+          <tbody id="iff-device-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="small text-muted" id="iff-import-summary">
+        Required fields: name, role, manufacturer, device_type, status, site.
       </div>
     </div>
   </div>
 </div>
+
+<script>
+  window.INNOVACE_IMPORT_MANAGER = {
+    csrf: (() => {
+      if (window.CSRF_TOKEN) return window.CSRF_TOKEN;
+      const c = document.cookie.split(';').map(s => s.trim()).find(s => s.startsWith('csrftoken='));
+      return c ? decodeURIComponent(c.split('=').slice(1).join('=')) : '';
+    })(),
+    optionsUrl: "{% url 'plugins:netbox_innovace_fibre:import_manager_options' %}",
+    bulkCreateUrl: "{% url 'plugins:netbox_innovace_fibre:device_bulk_create' %}"
+  };
+</script>
+<script type="module" src="{% static 'netbox_innovace_fibre/js/import_manager.js' %}"></script>
 {% endblock %}

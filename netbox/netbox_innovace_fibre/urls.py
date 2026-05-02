@@ -22,5 +22,7 @@ urlpatterns = [
     path('barcode-manager/import/', views.BarcodeCsvImportView.as_view(), name='barcode_csv_import'),
     path('barcode-manager/export/', views.BarcodeCsvExportView.as_view(), name='barcode_csv_export'),
     path('import-manager/', views.ImportManagerView.as_view(), name='import_manager'),
+    path('import-manager/options/', views.ImportManagerOptionsView.as_view(), name='import_manager_options'),
+    path('import-manager/devices/bulk-create/', views.DeviceBulkCreateView.as_view(), name='device_bulk_create'),
     path('import-manager/device-template.csv', views.DeviceImportTemplateCsvView.as_view(), name='device_import_template_csv'),
 ]

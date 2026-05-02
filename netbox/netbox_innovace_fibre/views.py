@@ -1,17 +1,22 @@
 import csv
 import io
+import json
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.utils import IntegrityError
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import NoReverseMatch, reverse
 from django.views import View
 
+from dcim.choices import DeviceFaceChoices, DeviceStatusChoices
 from dcim.forms.bulk_import import DeviceImportForm
-from dcim.models import Cable, CableTermination, Device, DeviceType
+from dcim.models import Cable, CableTermination, Device, DeviceRole, DeviceType, Location, Manufacturer, Rack, Site
+from utilities.permissions import get_permission_for_model
 
 from .forms import DeviceSignalRoutingForm
 from .models import DeviceSignalRouting, SignalRouting
@@ -20,6 +25,10 @@ from .tracer import trace_signal_path, trace_signal_path_for_device
 
 
 DEVICE_IMPORT_TEMPLATE_FIELDS = tuple(DeviceImportForm.Meta.fields)
+DEVICE_BULK_CREATE_FIELDS = (
+    'name', 'role', 'manufacturer', 'device_type', 'status', 'site', 'location', 'rack',
+    'position', 'face', 'serial', 'asset_tag', 'description',
+)
 DEVICE_IMPORT_TEMPLATE_ROWS = (
     {
         'name': 'dc1-leaf-01',
@@ -46,6 +55,33 @@ DEVICE_IMPORT_TEMPLATE_ROWS = (
         'description': 'Sample fibre patch panel',
     },
 )
+
+
+def _choice_options(choices):
+    return [
+        {'value': value, 'label': str(label)}
+        for value, label, *_ in choices
+    ]
+
+
+def _model_options(queryset, label_attr='name'):
+    return [
+        {'id': obj.pk, 'value': getattr(obj, label_attr), 'label': getattr(obj, label_attr)}
+        for obj in queryset
+    ]
+
+
+def _field_errors(form):
+    errors = []
+    for field_name, field_errors in form.errors.items():
+        label = field_name if field_name != '__all__' else 'row'
+        for error in field_errors:
+            errors.append(f'{label}: {error}')
+    return errors
+
+
+def _is_empty_device_row(row):
+    return not any((row.get(field) or '').strip() for field in DEVICE_BULK_CREATE_FIELDS)
 
 
 def _safe_image_url(image_field):
@@ -374,10 +410,158 @@ class ImportManagerView(LoginRequiredMixin, View):
             request,
             self.template_name,
             {
+                'device_bulk_create_fields': DEVICE_BULK_CREATE_FIELDS,
                 'device_import_template_fields': DEVICE_IMPORT_TEMPLATE_FIELDS,
                 'device_import_url': device_import_url,
             },
         )
+
+
+class ImportManagerOptionsView(LoginRequiredMixin, View):
+    def get(self, request):
+        manufacturer_id = request.GET.get('manufacturer_id')
+        site_id = request.GET.get('site_id')
+        location_id = request.GET.get('location_id')
+        query = (request.GET.get('q') or '').strip()
+
+        device_types = DeviceType.objects.select_related('manufacturer').order_by('manufacturer__name', 'model')
+        if manufacturer_id:
+            device_types = device_types.filter(manufacturer_id=manufacturer_id)
+        if query:
+            device_types = device_types.filter(model__icontains=query)
+
+        locations = Location.objects.select_related('site').order_by('site__name', 'name')
+        if site_id:
+            locations = locations.filter(site_id=site_id)
+
+        racks = Rack.objects.select_related('site', 'location').order_by('site__name', 'name')
+        if site_id:
+            racks = racks.filter(site_id=site_id)
+        if location_id:
+            racks = racks.filter(location_id=location_id)
+        elif site_id:
+            racks = racks.filter(Q(location__isnull=True) | Q(location__site_id=site_id))
+
+        return JsonResponse({
+            'roles': _model_options(DeviceRole.objects.order_by('name')),
+            'manufacturers': _model_options(Manufacturer.objects.order_by('name')),
+            'device_types': [
+                {
+                    'id': device_type.pk,
+                    'value': device_type.model,
+                    'label': device_type.model,
+                    'manufacturer_id': device_type.manufacturer_id,
+                    'manufacturer': device_type.manufacturer.name,
+                }
+                for device_type in device_types[:500]
+            ],
+            'statuses': _choice_options(DeviceStatusChoices),
+            'sites': _model_options(Site.objects.order_by('name')),
+            'locations': [
+                {
+                    'id': location.pk,
+                    'value': location.name,
+                    'label': location.name,
+                    'site_id': location.site_id,
+                    'site': location.site.name,
+                }
+                for location in locations[:500]
+            ],
+            'racks': [
+                {
+                    'id': rack.pk,
+                    'value': rack.name,
+                    'label': rack.name,
+                    'site_id': rack.site_id,
+                    'site': rack.site.name,
+                    'location_id': rack.location_id,
+                }
+                for rack in racks[:500]
+            ],
+            'faces': _choice_options(DeviceFaceChoices),
+        })
+
+
+class DeviceBulkCreateView(LoginRequiredMixin, View):
+    def post(self, request):
+        if not request.user.has_perm(get_permission_for_model(Device, 'add')):
+            raise PermissionDenied
+
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+
+        rows = payload.get('rows')
+        if not isinstance(rows, list):
+            return JsonResponse({'error': 'Expected a rows list'}, status=400)
+
+        prepared_rows = []
+        for row_index, row in enumerate(rows):
+            if not isinstance(row, dict) or _is_empty_device_row(row):
+                continue
+            prepared_rows.append((row_index, {
+                field: (row.get(field) or '').strip()
+                for field in DEVICE_BULK_CREATE_FIELDS
+            }))
+
+        if not prepared_rows:
+            return JsonResponse({'created': 0, 'results': [], 'errors': ['No device rows to create']}, status=400)
+
+        forms = []
+        results = [
+            {'row': row_index, 'status': 'pending', 'errors': []}
+            for row_index, _ in prepared_rows
+        ]
+        has_errors = False
+
+        for result, (_, row_data) in zip(results, prepared_rows):
+            form = DeviceImportForm(data=row_data, instance=Device())
+            if form.is_valid():
+                forms.append((result, form))
+            else:
+                result['status'] = 'error'
+                result['errors'] = _field_errors(form)
+                has_errors = True
+
+        if has_errors:
+            return JsonResponse({'created': 0, 'results': results}, status=400)
+
+        try:
+            with transaction.atomic():
+                created = []
+                for result, form in forms:
+                    parent_bay = getattr(form.instance, 'parent_bay', None)
+                    device = form.save()
+
+                    if parent_bay:
+                        parent_bay.snapshot()
+                        parent_bay.installed_device = device
+                        parent_bay.save()
+
+                    if not Device.objects.restrict(request.user, 'add').filter(pk=device.pk).exists():
+                        raise PermissionDenied
+
+                    created.append(device)
+                    result.update({
+                        'status': 'created',
+                        'id': device.pk,
+                        'name': device.name,
+                        'url': device.get_absolute_url(),
+                        'errors': [],
+                    })
+        except PermissionDenied:
+            raise
+        except (IntegrityError, ValidationError) as error:
+            return JsonResponse({
+                'created': 0,
+                'results': [
+                    {**result, 'status': 'error', 'errors': [str(error)]}
+                    for result in results
+                ],
+            }, status=400)
+
+        return JsonResponse({'created': len(created), 'results': results})
 
 
 class DeviceImportTemplateCsvView(LoginRequiredMixin, View):
