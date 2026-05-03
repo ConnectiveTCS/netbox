@@ -33,6 +33,15 @@ def _safe_file_url(file_field):
         return None
 
 
+def _device_type_width_inches(device_type):
+    value = (device_type.custom_field_data or {}).get('iff_device_width_in')
+    try:
+        width = float(value)
+    except (TypeError, ValueError):
+        return None
+    return width if width > 0 else None
+
+
 def _logical_trace_port_name(port_name):
     return re.sub(r'_(front|rear)$', '', port_name or '', flags=re.IGNORECASE)
 
@@ -339,8 +348,16 @@ class Rack3DDataAPIView(APIView):
         )
 
         devices = list(devices_qs)
+        shelf_devices_qs = (
+            Device.objects
+            .filter(rack=rack, position__isnull=True, parent_bay__isnull=True)
+            .select_related('device_type__manufacturer', 'role')
+            .prefetch_related('frontports', 'rearports', 'interfaces')
+            .order_by('name', 'pk')
+        )
+        shelf_devices = list(shelf_devices_qs)
         child_devices = []
-        physical_rack_by_device_id = {dev.pk: dev.rack_id for dev in devices}
+        physical_rack_by_device_id = {dev.pk: dev.rack_id for dev in devices + shelf_devices}
 
         device_list = []
         for dev in devices:
@@ -437,7 +454,47 @@ class Rack3DDataAPIView(APIView):
                 'port_positions':  dt.custom_field_data.get('port_positions') or {},
             })
 
-        cables = _build_rack_cables(devices + child_devices, physical_rack_by_device_id)
+        shelf_device_list = []
+        widthless_shelf_devices = []
+        for dev in shelf_devices:
+            width = _device_type_width_inches(dev.device_type)
+            if not width:
+                widthless_shelf_devices.append({
+                    'id': dev.pk,
+                    'name': dev.name or f'Device {dev.pk}',
+                    'device_type': dev.device_type.model,
+                    'manufacturer': dev.device_type.manufacturer.name if dev.device_type.manufacturer_id else '',
+                })
+                continue
+
+            dt = dev.device_type
+            role_name = dev.role.name if dev.role_id else ''
+            role_slug = dev.role.slug if dev.role_id else ''
+            shelf_device_list.append({
+                'id':             dev.pk,
+                'name':           dev.name or f'Device {dev.pk}',
+                'position':       None,
+                'face':           dev.face or 'front',
+                'u_height':       float(dt.u_height) if dt.u_height else 1.0,
+                'is_full_depth':  dt.is_full_depth,
+                'device_type':    dt.model,
+                'device_type_id': dt.pk,
+                'manufacturer':   dt.manufacturer.name if dt.manufacturer_id else '',
+                'role':           role_name,
+                'role_slug':      role_slug,
+                'role_color':     dev.role.color if dev.role_id else '',
+                'asset_tag':      dev.asset_tag or '',
+                'serial':         dev.serial or '',
+                'status':         dev.status,
+                'front_image':    _safe_file_url(dt.front_image),
+                'rear_image':     _safe_file_url(dt.rear_image),
+                'url':            f'/dcim/devices/{dev.pk}/',
+                'cable_exit_side': dev.custom_field_data.get('cable_exit_side') or 'left',
+                'port_positions':  dt.custom_field_data.get('port_positions') or {},
+                'shelf_width':    width,
+            })
+
+        cables = _build_rack_cables(devices + shelf_devices + child_devices, physical_rack_by_device_id)
 
         return Response({
             'rack': {
@@ -450,6 +507,8 @@ class Rack3DDataAPIView(APIView):
                 'inter_rack_exit_side': rack.custom_field_data.get('inter_rack_exit_side') or 'right',
             },
             'devices': device_list,
+            'shelf_devices': shelf_device_list,
+            'widthless_shelf_devices': widthless_shelf_devices,
             'cables':  cables,
         })
 

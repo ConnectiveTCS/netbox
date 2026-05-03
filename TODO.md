@@ -21,16 +21,46 @@ Status values: todo, in-progress, blocked, done, cancelled
 Priority values: low, medium, high, urgent
 -->
 
-- [ ] TASK-001: Add your first task here
+## Done
+
+Move completed tasks here after marking them `[x]` and setting `status: done`.
+
+- [x] TASK-001: Add a shelf for free-standing in rack
+  - status: done
+  - priority: high
+  - owner: unassigned
+  - area: 3D Rack Manager
+  - created: 2026-05-02
+  - due: none
+  - notes:
+    - Add a shelf for free-standing in rack device(s), where one or more devices can stand next to each other on a shelf based on their width (device width must be present)
+
+- [x] TASK-002: Add easier functionality for devices with device bays and devices in device bays under "Import Manager" for Innovace fibre plugin.
+  - status: done
+  - priority: medium
+  - owner: unassigned
+  - area: Import Manager
+  - created: YYYY-MM-DD
+  - due: none
+  - notes:
+    - Add easier functionality for devices with device bays and devices in device bays under "Import Manager" for Innovace fibre plugin. This will be additional to what is already present under the "Import Manager"
+
+- [x] TASK-003: Keep device body structures.
+  - status: done
+  - priority: medium
+  - owner: unassigned
+  - area: 3D Rack View
+  - created: YYYY-MM-DD
+  - due: none
+  - notes:
+    - Keep device body structures of the selected one and slightly increase transparency for the ones not selected.
+
+- [ ] TASK-004: Add rows of each unoccupied u position for selected racks
   - status: todo
   - priority: medium
   - owner: unassigned
   - area: general
-  - created: 2026-05-02
+  - created: YYYY-MM-DD
   - due: none
   - notes:
-    - Replace this starter task with a real item.
-
-## Done
-
-Move completed tasks here after marking them `[x]` and setting `status: done`.
+    - Add rows of each unoccupied u position for selected racks that the user can fill in under an additional table under "import manager" for Innovace Fibre plugin. Also add a feature that can be used for other tables in import manager, to either copy a specific rows values and pasting them in a new row automatically, almost like duplicating/cloning.

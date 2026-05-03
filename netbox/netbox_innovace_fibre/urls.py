@@ -24,5 +24,6 @@ urlpatterns = [
     path('import-manager/', views.ImportManagerView.as_view(), name='import_manager'),
     path('import-manager/options/', views.ImportManagerOptionsView.as_view(), name='import_manager_options'),
     path('import-manager/devices/bulk-create/', views.DeviceBulkCreateView.as_view(), name='device_bulk_create'),
+    path('import-manager/device-bays/bulk-populate/', views.DeviceBayBulkPopulateView.as_view(), name='device_bay_bulk_populate'),
     path('import-manager/device-template.csv', views.DeviceImportTemplateCsvView.as_view(), name='device_import_template_csv'),
 ]

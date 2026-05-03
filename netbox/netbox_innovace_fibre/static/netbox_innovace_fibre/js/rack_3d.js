@@ -301,10 +301,11 @@ class RackScene {
     const offset = new THREE.Vector3(0, 0, 0);
     this._buildRackFrame(rackData.rack, settings, offset);
     this._buildDevices(rackData.devices, rackData.rack, settings, offset);
+    this._buildShelfDevices(rackData.shelf_devices || [], rackData.rack, settings, offset);
     if (settings.showEmpty) this._buildEmptySlots(rackData, settings, offset);
     this._buildCables(
       rackData.cables || [],
-      rackData.devices,
+      [...(rackData.devices || []), ...(rackData.shelf_devices || [])],
       rackData.rack,
       settings,
       offset,
@@ -344,6 +345,7 @@ class RackScene {
       const zero = new THREE.Vector3(0, 0, 0);
       this._buildRackFrame(rd.rack, settings, zero, group);
       this._buildDevices(rd.devices, rd.rack, settings, zero, group);
+      this._buildShelfDevices(rd.shelf_devices || [], rd.rack, settings, zero, group);
       if (settings.showEmpty) this._buildEmptySlots(rd, settings, zero, group);
       // Rack name label floating above the cabinet
       const rackSc = parseFloat(settings.scale) || 1;
@@ -648,7 +650,7 @@ class RackScene {
       mats.forEach((m) => {
         if (!m) return;
         m.transparent = true;
-        m.opacity = 0.18;
+        m.opacity = 0.14;
       });
     }
   }
@@ -1520,6 +1522,122 @@ class RackScene {
     }
   }
 
+  _buildShelfDevices(devices, rack, settings, offset, parent) {
+    if (!devices.length) return;
+    const target = parent || this._scene;
+    const loader = new THREE.TextureLoader();
+    const layouts = this._shelfLayouts(devices, rack, settings, offset);
+    const shelfMat = new THREE.MeshStandardMaterial({
+      color: settings.theme === "light" ? 0x3f4854 : 0x202a36,
+      metalness: 0.48,
+      roughness: 0.42,
+    });
+
+    for (const layout of layouts) {
+      const shelfGeo = new THREE.BoxGeometry(
+        RACK_WIDTH - POST_W * 2,
+        0.16,
+        layout.depth + 0.7,
+      );
+      const shelf = new THREE.Mesh(shelfGeo, shelfMat);
+      shelf.position.set(offset.x, layout.shelfY, layout.z);
+      shelf.raycast = () => {};
+      target.add(shelf);
+      if (!parent) this._meshes.push(shelf);
+
+      for (const item of layout.items) {
+        const dev = item.dev;
+        const geo = new THREE.BoxGeometry(item.width, item.height, item.depth);
+        const materials = [
+          this._deviceSideMat(settings),
+          this._deviceSideMat(settings),
+          this._deviceSideMat(settings),
+          this._deviceSideMat(settings),
+          this._faceMat(dev, "front", loader, settings, themeColors(settings.theme)),
+          this._faceMat(dev, "rear", loader, settings, themeColors(settings.theme)),
+        ];
+        const mesh = new THREE.Mesh(geo, materials);
+        mesh.position.set(item.x, item.y, item.z);
+        mesh.userData = { deviceId: dev.id, deviceData: dev, isShelfDevice: true };
+        target.add(mesh);
+        if (!parent) this._meshes.push(mesh);
+        this._deviceMeshes.push(mesh);
+
+        const edgeMat = new THREE.LineBasicMaterial({
+          color: settings.theme === "light" ? 0x5577aa : 0x2a4060,
+          transparent: true,
+          opacity: 0.55,
+        });
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+        edges.raycast = () => {};
+        mesh.add(edges);
+
+        const div = document.createElement("div");
+        div.className = "r3d-device-label";
+        div.textContent = dev.name;
+        const label = new CSS2DObject(div);
+        label.position.set(0, item.height / 2 + 0.2, item.depth / 2 + 0.1);
+        label.visible = false;
+        mesh.add(label);
+        mesh.userData.label = label;
+        this._labels.push(label);
+      }
+    }
+
+    this._applyLabelMode(settings.labels);
+  }
+
+  _deviceSideMat(settings) {
+    return new THREE.MeshStandardMaterial({
+      color: themeColors(settings.theme).deviceDark,
+      metalness: 0.65,
+      roughness: 0.45,
+    });
+  }
+
+  _shelfLayouts(devices, rack, settings, offset) {
+    const sc = parseFloat(settings.scale) || 1;
+    const baseY = rackCabinetBaseY(offset, sc);
+    const depth = DEPTH_MAP[settings.depth] || DEPTH_MAP.realistic;
+    const deviceDepth = Math.max(2.2, deviceEnvelopeDepth(depth) * 0.45);
+    const shelfZ = offset.z + depth / 2 - deviceClearanceForDepth(depth, "front") - deviceDepth / 2;
+    const usableW = RACK_WIDTH - POST_W * 2;
+    const gap = 0.35;
+    const rows = [];
+    let row = { width: 0, height: 0, items: [] };
+
+    for (const dev of devices) {
+      const rawWidth = parseFloat(dev.shelf_width);
+      if (!Number.isFinite(rawWidth) || rawWidth <= 0) continue;
+      const width = Math.max(0.6, Math.min(usableW, rawWidth));
+      const height = Math.max(0.75, (parseFloat(dev.u_height) || 1) * U_SCALE_BASE * sc);
+      if (row.items.length && row.width + gap + width > usableW) {
+        rows.push(row);
+        row = { width: 0, height: 0, items: [] };
+      }
+      const x = -usableW / 2 + row.width + (row.items.length ? gap : 0) + width / 2;
+      row.items.push({ dev, width, height, localX: x });
+      row.width += (row.items.length > 1 ? gap : 0) + width;
+      row.height = Math.max(row.height, height);
+    }
+    if (row.items.length) rows.push(row);
+
+    let yCursor = baseY + 0.38;
+    return rows.map((shelfRow) => {
+      const shelfY = yCursor;
+      const itemY = shelfY + 0.08 + shelfRow.height / 2;
+      const items = shelfRow.items.map((item) => ({
+        ...item,
+        depth: deviceDepth,
+        x: offset.x + item.localX,
+        y: itemY,
+        z: shelfZ,
+      }));
+      yCursor += shelfRow.height + 0.48;
+      return { shelfY, z: shelfZ, depth: deviceDepth, items };
+    });
+  }
+
   _faceMat(dev, side, loader, settings, colors) {
     const mountedRear = dev.face === "rear" && !dev.is_full_depth;
     const url = mountedRear
@@ -1756,7 +1874,7 @@ class RackScene {
 
       const worldOffset = new THREE.Vector3(p.x - cx, 0, p.z - cz);
       const rackDwMap = this._buildDeviceWorldMap(
-        rd.devices,
+        [...(rd.devices || []), ...(rd.shelf_devices || [])],
         rd.rack,
         settings,
         worldOffset,
@@ -1793,7 +1911,31 @@ class RackScene {
       offset.z - depth / 2 + deviceClearanceForDepth(depth, "rear");
     const fullDepthDeviceDepth = deviceEnvelopeDepth(depth);
     const map = new Map();
+    const shelfDevices = devices.filter((dev) => dev.shelf_width);
+    const shelfLayouts = this._shelfLayouts(shelfDevices, rack, settings, offset);
+    for (const layout of shelfLayouts) {
+      for (const item of layout.items) {
+        const dev = item.dev;
+        map.set(dev.id, {
+          worldX: item.x,
+          worldYBot: item.y - item.height / 2,
+          worldYTop: item.y + item.height / 2,
+          frontFaceZ: item.z + item.depth / 2,
+          rearFaceZ: item.z - item.depth / 2,
+          logicalFrontFaceZ: item.z + item.depth / 2,
+          logicalRearFaceZ: item.z - item.depth / 2,
+          mountFace: "front",
+          rackCenterZ: offset.z,
+          rackOffsetX: offset.x,
+          cable_exit_side: dev.cable_exit_side || "left",
+          port_positions: dev.port_positions || {},
+          deviceW: item.width,
+        });
+      }
+    }
+
     for (const dev of devices) {
+      if (dev.shelf_width) continue;
       const yBottom = this._calcY(dev, rack, sc);
       const deviceH = dev.u_height * U_SCALE_BASE * sc;
       const deviceDepth = dev.is_full_depth
@@ -3654,6 +3796,7 @@ class AppController {
     if (this._loadedRacks[rackId]) {
       this._currentData = this._loadedRacks[rackId];
       this._scene.load(this._currentData, this._settings());
+      this._reportWidthlessShelfDevices(this._currentData);
       this._restoreCameraFromSession();
       this._showLoading(false);
       this._queueSessionSave();
@@ -3671,6 +3814,7 @@ class AppController {
       this._loadedRacks[rackId] = data;
       this._currentData = data;
       this._scene.load(data, this._settings());
+      this._reportWidthlessShelfDevices(data);
       this._restoreCameraFromSession();
       this._showLoading(false);
       this._queueSessionSave();
@@ -3678,6 +3822,14 @@ class AppController {
       console.error("Rack 3D data load failed:", e);
       this._showLoading(false);
     }
+  }
+
+  _reportWidthlessShelfDevices(data) {
+    const missing = data?.widthless_shelf_devices || [];
+    if (!missing.length) return;
+    const names = missing.slice(0, 4).map((dev) => dev.name).join(", ");
+    const suffix = missing.length > 4 ? ` and ${missing.length - 4} more` : "";
+    this._showToast(`Shelf skipped ${missing.length} device(s) missing iff_device_width_in: ${names}${suffix}`);
   }
 
   async _fetchMissingRacks(rackIds) {
@@ -4051,6 +4203,8 @@ class AppController {
     const positionText =
       dev.position !== null && dev.position !== undefined
         ? `U${dev.position}`
+        : dev.shelf_width
+          ? "Shelf"
         : dev.bay_name
           ? `Bay ${dev.bay_name}${dev.parent_device_name ? ` (${dev.parent_device_name})` : ""}`
           : "—";
@@ -4074,6 +4228,7 @@ class AppController {
             <div class="r3d-info-row"><span class="r3d-info-lbl">Role</span><span class="r3d-info-val">${dev.role || "—"}</span></div>
             <div class="r3d-info-row"><span class="r3d-info-lbl">Position</span><span class="r3d-info-val">${positionText}</span></div>
             <div class="r3d-info-row"><span class="r3d-info-lbl">Face</span><span class="r3d-info-val">${faceText} / ${uHeightText}${dev.is_full_depth ? " / full-depth" : ""}</span></div>
+            ${dev.shelf_width ? `<div class="r3d-info-row"><span class="r3d-info-lbl">Shelf width</span><span class="r3d-info-val">${dev.shelf_width} in</span></div>` : ""}
             ${dev.asset_tag ? `<div class="r3d-info-row"><span class="r3d-info-lbl">Asset tag</span><span class="r3d-info-val">${dev.asset_tag}</span></div>` : ""}
             ${dev.serial ? `<div class="r3d-info-row"><span class="r3d-info-lbl">Serial</span><span class="r3d-info-val">${dev.serial}</span></div>` : ""}
             <div class="r3d-info-actions">

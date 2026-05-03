@@ -14,12 +14,24 @@
     min-width: 1500px;
   }
 
-  #iff-device-table th {
+  #iff-child-device-table {
+    min-width: 1500px;
+  }
+
+  #iff-bay-populate-table {
+    min-width: 900px;
+  }
+
+  #iff-device-table th,
+  #iff-child-device-table th,
+  #iff-bay-populate-table th {
     white-space: nowrap;
     font-size: 12px;
   }
 
-  #iff-device-table td {
+  #iff-device-table td,
+  #iff-child-device-table td,
+  #iff-bay-populate-table td {
     vertical-align: middle;
     min-width: 120px;
   }
@@ -30,20 +42,29 @@
   }
 
   #iff-device-table input,
-  #iff-device-table select {
+  #iff-device-table select,
+  #iff-child-device-table input,
+  #iff-child-device-table select,
+  #iff-bay-populate-table select {
     min-width: 100%;
   }
 
-  #iff-device-table .iff-row-status {
+  #iff-device-table .iff-row-status,
+  #iff-child-device-table .iff-row-status,
+  #iff-bay-populate-table .iff-row-status {
     min-width: 180px;
     font-size: 12px;
   }
 
-  #iff-device-table tr.iff-created {
+  #iff-device-table tr.iff-created,
+  #iff-child-device-table tr.iff-created,
+  #iff-bay-populate-table tr.iff-created {
     --bs-table-bg: var(--bs-success-bg-subtle);
   }
 
-  #iff-device-table tr.iff-error {
+  #iff-device-table tr.iff-error,
+  #iff-child-device-table tr.iff-error,
+  #iff-bay-populate-table tr.iff-error {
     --bs-table-bg: var(--bs-danger-bg-subtle);
   }
 </style>
@@ -114,6 +135,96 @@
       </div>
     </div>
   </div>
+
+  <div class="card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>
+        <i class="mdi mdi-view-module"></i>
+        Device Bays
+      </span>
+      <span class="badge text-bg-secondary">Bulk</span>
+    </div>
+    <div class="card-body">
+      <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="iff-create-child-tab" data-bs-toggle="tab" data-bs-target="#iff-create-child-pane" type="button" role="tab">
+            Create into bay
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="iff-populate-bay-tab" data-bs-toggle="tab" data-bs-target="#iff-populate-bay-pane" type="button" role="tab">
+            Populate existing
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="iff-create-child-pane" role="tabpanel" aria-labelledby="iff-create-child-tab">
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-outline-secondary" type="button" id="iff-add-child-row">
+              <i class="mdi mdi-plus"></i>
+              Add row
+            </button>
+            <button class="btn btn-primary" type="button" id="iff-bulk-create-children">
+              <i class="mdi mdi-upload"></i>
+              Create Child Devices
+            </button>
+          </div>
+          <div class="iff-table-wrap border rounded mb-3">
+            <table class="table table-sm table-hover mb-0 align-middle" id="iff-child-device-table">
+              <thead>
+                <tr>
+                  <th style="width: 44px">#</th>
+                  <th>parent</th>
+                  <th>device_bay</th>
+                  {% for field in device_bulk_create_fields %}
+                    <th>{{ field }}</th>
+                  {% endfor %}
+                  <th>Status</th>
+                  <th style="width: 56px"></th>
+                </tr>
+              </thead>
+              <tbody id="iff-child-device-rows"></tbody>
+            </table>
+          </div>
+          <div class="small text-muted" id="iff-child-import-summary">
+            Required fields: parent, device_bay, name, role, manufacturer, device_type, status, site.
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="iff-populate-bay-pane" role="tabpanel" aria-labelledby="iff-populate-bay-tab">
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-outline-secondary" type="button" id="iff-add-populate-row">
+              <i class="mdi mdi-plus"></i>
+              Add row
+            </button>
+            <button class="btn btn-primary" type="button" id="iff-bulk-populate-bays">
+              <i class="mdi mdi-upload"></i>
+              Populate Bays
+            </button>
+          </div>
+          <div class="iff-table-wrap border rounded mb-3">
+            <table class="table table-sm table-hover mb-0 align-middle" id="iff-bay-populate-table">
+              <thead>
+                <tr>
+                  <th style="width: 44px">#</th>
+                  <th>parent</th>
+                  <th>device_bay</th>
+                  <th>existing_device</th>
+                  <th>Status</th>
+                  <th style="width: 56px"></th>
+                </tr>
+              </thead>
+              <tbody id="iff-bay-populate-rows"></tbody>
+            </table>
+          </div>
+          <div class="small text-muted" id="iff-populate-summary">
+            Existing devices must be uninstalled 0U child devices in the same site and rack as the parent.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -124,7 +235,8 @@
       return c ? decodeURIComponent(c.split('=').slice(1).join('=')) : '';
     })(),
     optionsUrl: "{% url 'plugins:netbox_innovace_fibre:import_manager_options' %}",
-    bulkCreateUrl: "{% url 'plugins:netbox_innovace_fibre:device_bulk_create' %}"
+    bulkCreateUrl: "{% url 'plugins:netbox_innovace_fibre:device_bulk_create' %}",
+    bulkPopulateUrl: "{% url 'plugins:netbox_innovace_fibre:device_bay_bulk_populate' %}"
   };
 </script>
 <script type="module" src="{% static 'netbox_innovace_fibre/js/import_manager.js' %}"></script>

@@ -13,9 +13,9 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import NoReverseMatch, reverse
 from django.views import View
 
-from dcim.choices import DeviceFaceChoices, DeviceStatusChoices
+from dcim.choices import DeviceFaceChoices, DeviceStatusChoices, SubdeviceRoleChoices
 from dcim.forms.bulk_import import DeviceImportForm
-from dcim.models import Cable, CableTermination, Device, DeviceRole, DeviceType, Location, Manufacturer, Rack, Site
+from dcim.models import Cable, CableTermination, Device, DeviceBay, DeviceRole, DeviceType, Location, Manufacturer, Rack, Site
 from utilities.permissions import get_permission_for_model
 
 from .forms import DeviceSignalRoutingForm
@@ -29,6 +29,7 @@ DEVICE_BULK_CREATE_FIELDS = (
     'name', 'role', 'manufacturer', 'device_type', 'status', 'site', 'location', 'rack',
     'position', 'face', 'serial', 'asset_tag', 'description',
 )
+DEVICE_BULK_CREATE_FORM_FIELDS = DEVICE_BULK_CREATE_FIELDS + ('parent', 'device_bay')
 DEVICE_IMPORT_TEMPLATE_ROWS = (
     {
         'name': 'dc1-leaf-01',
@@ -81,7 +82,26 @@ def _field_errors(form):
 
 
 def _is_empty_device_row(row):
-    return not any((row.get(field) or '').strip() for field in DEVICE_BULK_CREATE_FIELDS)
+    return not any((row.get(field) or '').strip() for field in DEVICE_BULK_CREATE_FORM_FIELDS)
+
+
+def _device_bay_option(bay):
+    parent = bay.device
+    site = parent.site
+    rack = parent.rack
+    return {
+        'id': bay.pk,
+        'value': bay.name,
+        'label': f'{parent.name or parent} / {bay.name}',
+        'name': bay.name,
+        'parent_id': parent.pk,
+        'parent_name': parent.name or str(parent),
+        'site_id': site.pk if site else None,
+        'site': site.name if site else '',
+        'rack_id': rack.pk if rack else None,
+        'rack': rack.name if rack else '',
+        'occupied': bool(bay.installed_device_id),
+    }
 
 
 def _safe_image_url(image_field):
@@ -442,6 +462,40 @@ class ImportManagerOptionsView(LoginRequiredMixin, View):
         elif site_id:
             racks = racks.filter(Q(location__isnull=True) | Q(location__site_id=site_id))
 
+        parent_devices = (
+            Device.objects
+            .filter(devicebays__isnull=False)
+            .select_related('site', 'rack', 'device_type__manufacturer')
+            .distinct()
+            .order_by('site__name', 'name')
+        )
+        if site_id:
+            parent_devices = parent_devices.filter(site_id=site_id)
+        if location_id:
+            parent_devices = parent_devices.filter(location_id=location_id)
+
+        device_bays = (
+            DeviceBay.objects
+            .select_related('device__site', 'device__rack', 'installed_device')
+            .filter(device__in=parent_devices)
+            .order_by('device__name', 'name')
+        )
+
+        existing_child_devices = (
+            Device.objects
+            .filter(
+                parent_bay__isnull=True,
+                device_type__u_height=0,
+                device_type__subdevice_role=SubdeviceRoleChoices.ROLE_CHILD,
+            )
+            .select_related('site', 'rack', 'device_type__manufacturer')
+            .order_by('site__name', 'name')
+        )
+        if site_id:
+            existing_child_devices = existing_child_devices.filter(site_id=site_id)
+        if location_id:
+            existing_child_devices = existing_child_devices.filter(location_id=location_id)
+
         return JsonResponse({
             'roles': _model_options(DeviceRole.objects.order_by('name')),
             'manufacturers': _model_options(Manufacturer.objects.order_by('name')),
@@ -479,6 +533,36 @@ class ImportManagerOptionsView(LoginRequiredMixin, View):
                 for rack in racks[:500]
             ],
             'faces': _choice_options(DeviceFaceChoices),
+            'parent_devices': [
+                {
+                    'id': device.pk,
+                    'value': device.name or str(device),
+                    'label': device.name or str(device),
+                    'site_id': device.site_id,
+                    'site': device.site.name if device.site_id else '',
+                    'rack_id': device.rack_id,
+                    'rack': device.rack.name if device.rack_id else '',
+                    'device_type': device.device_type.model if device.device_type_id else '',
+                }
+                for device in parent_devices[:500]
+            ],
+            'device_bays': [
+                _device_bay_option(bay)
+                for bay in device_bays[:1000]
+            ],
+            'existing_child_devices': [
+                {
+                    'id': device.pk,
+                    'value': device.name or str(device),
+                    'label': device.name or str(device),
+                    'site_id': device.site_id,
+                    'site': device.site.name if device.site_id else '',
+                    'rack_id': device.rack_id,
+                    'rack': device.rack.name if device.rack_id else '',
+                    'device_type': device.device_type.model if device.device_type_id else '',
+                }
+                for device in existing_child_devices[:1000]
+            ],
         })
 
 
@@ -502,7 +586,7 @@ class DeviceBulkCreateView(LoginRequiredMixin, View):
                 continue
             prepared_rows.append((row_index, {
                 field: (row.get(field) or '').strip()
-                for field in DEVICE_BULK_CREATE_FIELDS
+                for field in DEVICE_BULK_CREATE_FORM_FIELDS
             }))
 
         if not prepared_rows:
@@ -562,6 +646,87 @@ class DeviceBulkCreateView(LoginRequiredMixin, View):
             }, status=400)
 
         return JsonResponse({'created': len(created), 'results': results})
+
+
+class DeviceBayBulkPopulateView(LoginRequiredMixin, View):
+    def post(self, request):
+        if not request.user.has_perm(get_permission_for_model(DeviceBay, 'change')):
+            raise PermissionDenied
+
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+
+        rows = payload.get('rows')
+        if not isinstance(rows, list):
+            return JsonResponse({'error': 'Expected a rows list'}, status=400)
+
+        results = []
+        prepared = []
+        has_errors = False
+
+        for row_index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            device_id = row.get('device_id')
+            bay_id = row.get('device_bay_id')
+            if not device_id and not bay_id:
+                continue
+
+            result = {'row': row_index, 'status': 'pending', 'errors': []}
+            results.append(result)
+
+            try:
+                device = Device.objects.select_related('site', 'rack', 'device_type').get(pk=device_id)
+                bay = DeviceBay.objects.select_related('device__site', 'device__rack', 'installed_device').get(pk=bay_id)
+                _validate_existing_device_bay_population(device, bay)
+            except (Device.DoesNotExist, DeviceBay.DoesNotExist, ValidationError) as error:
+                result['status'] = 'error'
+                result['errors'] = error.messages if isinstance(error, ValidationError) else [str(error)]
+                has_errors = True
+                continue
+
+            prepared.append((result, device, bay))
+
+        if not results:
+            return JsonResponse({'populated': 0, 'results': [], 'errors': ['No bay rows to populate']}, status=400)
+
+        if has_errors:
+            return JsonResponse({'populated': 0, 'results': results}, status=400)
+
+        with transaction.atomic():
+            for result, device, bay in prepared:
+                bay.snapshot()
+                bay.installed_device = device
+                bay.save()
+                result.update({
+                    'status': 'populated',
+                    'device_id': device.pk,
+                    'device_name': device.name or str(device),
+                    'device_url': device.get_absolute_url(),
+                    'device_bay_id': bay.pk,
+                    'device_bay_name': bay.name,
+                    'parent_name': bay.device.name or str(bay.device),
+                    'errors': [],
+                })
+
+        return JsonResponse({'populated': len(prepared), 'results': results})
+
+
+def _validate_existing_device_bay_population(device, bay):
+    if bay.installed_device_id:
+        raise ValidationError(f'Device bay {bay.device} / {bay.name} is already occupied.')
+    if device.pk == bay.device_id:
+        raise ValidationError('A device cannot be installed into one of its own bays.')
+    if device.parent_bay_id:
+        raise ValidationError(f'Device {device} is already installed in a device bay.')
+    if device.site_id != bay.device.site_id:
+        raise ValidationError(f'Device {device} is not assigned to the same site as parent {bay.device}.')
+    if device.rack_id != bay.device.rack_id:
+        raise ValidationError(f'Device {device} is not assigned to the same rack as parent {bay.device}.')
+    if not device.device_type.is_child_device or device.device_type.u_height != 0:
+        raise ValidationError(f'Device {device} must use a 0U child device type.')
 
 
 class DeviceImportTemplateCsvView(LoginRequiredMixin, View):

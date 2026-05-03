@@ -38,7 +38,11 @@ class ImportManagerApp {
   constructor(config) {
     this.config = config;
     this.tbody = document.getElementById("iff-device-rows");
+    this.childTbody = document.getElementById("iff-child-device-rows");
+    this.populateTbody = document.getElementById("iff-bay-populate-rows");
     this.summary = document.getElementById("iff-import-summary");
+    this.childSummary = document.getElementById("iff-child-import-summary");
+    this.populateSummary = document.getElementById("iff-populate-summary");
     this.options = {
       roles: [],
       manufacturers: [],
@@ -48,6 +52,9 @@ class ImportManagerApp {
       locations: [],
       racks: [],
       faces: [],
+      parent_devices: [],
+      device_bays: [],
+      existing_child_devices: [],
     };
 
     this._init();
@@ -57,6 +64,8 @@ class ImportManagerApp {
     this._bindToolbar();
     await this._loadOptions();
     for (let i = 0; i < 5; i += 1) this._addRow();
+    for (let i = 0; i < 3; i += 1) this._addChildRow();
+    for (let i = 0; i < 3; i += 1) this._addPopulateRow();
   }
 
   _bindToolbar() {
@@ -67,6 +76,16 @@ class ImportManagerApp {
 
     document.getElementById("iff-bulk-create").addEventListener("click", () => this._bulkCreate());
     document.getElementById("iff-clear-completed").addEventListener("click", () => this._clearCompleted());
+    document.getElementById("iff-add-child-row").addEventListener("click", () => {
+      const row = this._addChildRow();
+      this._focusRowCell(row, 0);
+    });
+    document.getElementById("iff-bulk-create-children").addEventListener("click", () => this._bulkCreateChildren());
+    document.getElementById("iff-add-populate-row").addEventListener("click", () => {
+      const row = this._addPopulateRow();
+      this._focusRowCell(row, 0);
+    });
+    document.getElementById("iff-bulk-populate-bays").addEventListener("click", () => this._bulkPopulateBays());
   }
 
   async _loadOptions(params = {}) {
@@ -99,6 +118,50 @@ class ImportManagerApp {
     return tr;
   }
 
+  _addChildRow(values = {}) {
+    const tr = document.createElement("tr");
+    tr.dataset.status = "draft";
+    tr.innerHTML = `
+      <td class="text-muted iff-row-number"></td>
+      <td><select class="form-select form-select-sm no-ts iff-cell" data-field="parent" required></select></td>
+      <td><select class="form-select form-select-sm no-ts iff-cell" data-field="device_bay" required></select></td>
+      ${TABLE_FIELDS.map((field) => `<td class="iff-col-${field}">${this._fieldHtml(field, values[field] || "")}</td>`).join("")}
+      <td class="iff-row-status text-muted">Ready</td>
+      <td class="text-end">
+        <button class="btn btn-sm btn-outline-danger iff-delete-row" type="button" title="Remove row">
+          <i class="mdi mdi-close"></i>
+        </button>
+      </td>
+    `;
+    this.childTbody.appendChild(tr);
+    this._hydrateChildSelects(tr);
+    this._bindChildRow(tr);
+    this._renumberTable(this.childTbody);
+    return tr;
+  }
+
+  _addPopulateRow() {
+    const tr = document.createElement("tr");
+    tr.dataset.status = "draft";
+    tr.innerHTML = `
+      <td class="text-muted iff-row-number"></td>
+      <td><select class="form-select form-select-sm no-ts iff-cell" data-field="parent" required></select></td>
+      <td><select class="form-select form-select-sm no-ts iff-cell" data-field="device_bay" required></select></td>
+      <td><select class="form-select form-select-sm no-ts iff-cell" data-field="device" required></select></td>
+      <td class="iff-row-status text-muted">Ready</td>
+      <td class="text-end">
+        <button class="btn btn-sm btn-outline-danger iff-delete-row" type="button" title="Remove row">
+          <i class="mdi mdi-close"></i>
+        </button>
+      </td>
+    `;
+    this.populateTbody.appendChild(tr);
+    this._hydratePopulateSelects(tr);
+    this._bindPopulateRow(tr);
+    this._renumberTable(this.populateTbody);
+    return tr;
+  }
+
   _fieldHtml(field, value) {
     const required = REQUIRED_FIELDS.has(field) ? "required" : "";
     const escaped = this._escape(value);
@@ -122,6 +185,34 @@ class ImportManagerApp {
     });
   }
 
+  _bindChildRow(tr) {
+    tr.querySelector(".iff-delete-row").addEventListener("click", () => {
+      tr.remove();
+      if (!this.childTbody.children.length) this._addChildRow();
+      this._renumberTable(this.childTbody);
+    });
+
+    tr.querySelectorAll(".iff-cell").forEach((cell) => {
+      cell.addEventListener("keydown", (event) => this._handleKeydown(event));
+      cell.addEventListener("change", () => this._handleChildDependencies(tr, cell.dataset.field));
+      cell.addEventListener("input", () => this._markDraft(tr));
+    });
+  }
+
+  _bindPopulateRow(tr) {
+    tr.querySelector(".iff-delete-row").addEventListener("click", () => {
+      tr.remove();
+      if (!this.populateTbody.children.length) this._addPopulateRow();
+      this._renumberTable(this.populateTbody);
+    });
+
+    tr.querySelectorAll(".iff-cell").forEach((cell) => {
+      cell.addEventListener("keydown", (event) => this._handleKeydown(event));
+      cell.addEventListener("change", () => this._handlePopulateDependencies(tr, cell.dataset.field));
+      cell.addEventListener("input", () => this._markDraft(tr));
+    });
+  }
+
   _hydrateSelects(tr) {
     this._setSelectOptions(tr.querySelector('[data-field="role"]'), this.options.roles);
     this._setSelectOptions(tr.querySelector('[data-field="manufacturer"]'), this.options.manufacturers);
@@ -129,6 +220,18 @@ class ImportManagerApp {
     this._setSelectOptions(tr.querySelector('[data-field="site"]'), this.options.sites);
     this._setSelectOptions(tr.querySelector('[data-field="face"]'), this.options.faces, "front");
     this._refreshDependentSelects(tr);
+  }
+
+  _hydrateChildSelects(tr) {
+    this._setSelectOptions(tr.querySelector('[data-field="parent"]'), this.options.parent_devices);
+    this._hydrateSelects(tr);
+    this._refreshChildBaySelect(tr, false);
+  }
+
+  _hydratePopulateSelects(tr) {
+    this._setSelectOptions(tr.querySelector('[data-field="parent"]'), this.options.parent_devices);
+    this._setSelectOptions(tr.querySelector('[data-field="device"]'), this.options.existing_child_devices);
+    this._refreshPopulateSelects(tr, false);
   }
 
   _setSelectOptions(select, options, defaultValue = "") {
@@ -142,6 +245,11 @@ class ImportManagerApp {
       if (option.manufacturerId || option.manufacturer_id) opt.dataset.manufacturerId = option.manufacturerId || option.manufacturer_id;
       if (option.siteId || option.site_id) opt.dataset.siteId = option.siteId || option.site_id;
       if (option.locationId || option.location_id) opt.dataset.locationId = option.locationId || option.location_id;
+      if (option.rackId || option.rack_id) opt.dataset.rackId = option.rackId || option.rack_id;
+      if (option.parentId || option.parent_id) opt.dataset.parentId = option.parentId || option.parent_id;
+      if (option.name) opt.dataset.name = option.name;
+      if (option.site) opt.dataset.site = option.site;
+      if (option.rack) opt.dataset.rack = option.rack;
       select.appendChild(opt);
     });
     if ([...select.options].some((option) => option.value === current)) select.value = current;
@@ -160,6 +268,19 @@ class ImportManagerApp {
       this._setSelectOptions(tr.querySelector('[data-field="rack"]'), []);
     }
     this._refreshDependentSelects(tr);
+  }
+
+  _handleChildDependencies(tr, field) {
+    this._handleDependencies(tr, field);
+    if (field === "parent") {
+      this._refreshChildBaySelect(tr, true);
+      this._applyParentDefaults(tr);
+    }
+  }
+
+  _handlePopulateDependencies(tr, field) {
+    this._markDraft(tr);
+    if (field === "parent") this._refreshPopulateSelects(tr, true);
   }
 
   _refreshDependentSelects(tr) {
@@ -185,6 +306,65 @@ class ImportManagerApp {
     this._setSelectOptions(tr.querySelector('[data-field="rack"]'), racks);
   }
 
+  _refreshChildBaySelect(tr, clearCurrent = true) {
+    const select = tr.querySelector('[data-field="device_bay"]');
+    if (!select) return;
+    const current = clearCurrent ? "" : select.value;
+    const parentId = this._selectedId(tr, "parent");
+    const bays = this.options.device_bays.filter((option) => {
+      if (option.occupied) return false;
+      return !parentId || String(option.parent_id) === String(parentId);
+    });
+    this._setSelectOptions(select, bays);
+    if (current && [...select.options].some((option) => option.value === current)) {
+      select.value = current;
+    }
+  }
+
+  _refreshPopulateSelects(tr, clearCurrent = true) {
+    const baySelect = tr.querySelector('[data-field="device_bay"]');
+    const deviceSelect = tr.querySelector('[data-field="device"]');
+    const parentId = this._selectedId(tr, "parent");
+    const parentOpt = tr.querySelector('[data-field="parent"]')?.selectedOptions?.[0];
+    const rackId = parentOpt?.dataset?.rackId || "";
+    const siteId = parentOpt?.dataset?.siteId || "";
+    const currentBay = clearCurrent ? "" : baySelect?.value;
+    const currentDevice = clearCurrent ? "" : deviceSelect?.value;
+
+    const bays = this.options.device_bays.filter((option) => {
+      if (option.occupied) return false;
+      return !parentId || String(option.parent_id) === String(parentId);
+    });
+    this._setSelectOptions(baySelect, bays);
+    if (currentBay && [...baySelect.options].some((option) => option.value === currentBay)) {
+      baySelect.value = currentBay;
+    }
+
+    const devices = this.options.existing_child_devices.filter((option) => {
+      if (siteId && String(option.site_id) !== String(siteId)) return false;
+      if (rackId && String(option.rack_id) !== String(rackId)) return false;
+      return true;
+    });
+    this._setSelectOptions(deviceSelect, devices);
+    if (currentDevice && [...deviceSelect.options].some((option) => option.value === currentDevice)) {
+      deviceSelect.value = currentDevice;
+    }
+  }
+
+  _applyParentDefaults(tr) {
+    const parentOpt = tr.querySelector('[data-field="parent"]')?.selectedOptions?.[0];
+    if (!parentOpt) return;
+    const site = parentOpt.dataset.site || "";
+    const rack = parentOpt.dataset.rack || "";
+    const siteCell = tr.querySelector('[data-field="site"]');
+    const rackCell = tr.querySelector('[data-field="rack"]');
+    if (site && siteCell && !siteCell.value) {
+      siteCell.value = site;
+      this._handleDependencies(tr, "site");
+    }
+    if (rack && rackCell && !rackCell.value) rackCell.value = rack;
+  }
+
   _selectedId(tr, field) {
     const select = tr.querySelector(`[data-field="${field}"]`);
     return select?.selectedOptions?.[0]?.dataset?.id || "";
@@ -194,9 +374,15 @@ class ImportManagerApp {
     if (event.key !== "Enter") return;
     event.preventDefault();
 
-    const cells = [...this.tbody.querySelectorAll(".iff-cell")];
+    const tbody = event.currentTarget.closest("tbody") || this.tbody;
+    const cells = [...tbody.querySelectorAll(".iff-cell")];
     const index = cells.indexOf(event.currentTarget);
-    const next = cells[index + 1] || this._addRow().querySelector(".iff-cell");
+    let next = cells[index + 1];
+    if (!next) {
+      if (tbody === this.childTbody) next = this._addChildRow().querySelector(".iff-cell");
+      else if (tbody === this.populateTbody) next = this._addPopulateRow().querySelector(".iff-cell");
+      else next = this._addRow().querySelector(".iff-cell");
+    }
     next.focus();
     if (next.select) next.select();
   }
@@ -246,6 +432,89 @@ class ImportManagerApp {
     }
   }
 
+  async _bulkCreateChildren() {
+    const rows = [...this.childTbody.querySelectorAll("tr")];
+    const payloadRows = rows.map((tr) => tr.dataset.status === "created" ? {} : this._childRowData(tr));
+    const nonEmptyRows = payloadRows.filter((row) => this._hasData(row));
+    if (!nonEmptyRows.length) {
+      this._setSummaryFor(this.childSummary, "No child device rows to create.", "text-danger");
+      return;
+    }
+
+    this._setBusyFor("iff-bulk-create-children", true);
+    rows.forEach((tr) => {
+      if (tr.dataset.status === "created") return;
+      this._setRowStatus(tr, this._hasData(this._childRowData(tr)) ? "pending" : "draft", this._hasData(this._childRowData(tr)) ? "Pending" : "Ready");
+    });
+
+    try {
+      const response = await fetch(this.config.bulkCreateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": this.config.csrf,
+        },
+        body: JSON.stringify({ rows: payloadRows }),
+      });
+      const result = await response.json();
+      this._applyResultsTo(this.childTbody, result.results || []);
+      if (response.ok) {
+        this._setSummaryFor(this.childSummary, `Created ${result.created || 0} child device(s).`, "text-success");
+        this._addChildRowIfNeeded();
+      } else {
+        this._setSummaryFor(this.childSummary, "Fix the highlighted child rows and try again.", "text-danger");
+      }
+    } catch (error) {
+      this._setSummaryFor(this.childSummary, error.message || "Child bulk create failed.", "text-danger");
+    } finally {
+      this._setBusyFor("iff-bulk-create-children", false);
+      await this._loadOptions();
+      this._refreshAllBaySelects();
+    }
+  }
+
+  async _bulkPopulateBays() {
+    const rows = [...this.populateTbody.querySelectorAll("tr")];
+    const payloadRows = rows.map((tr) => tr.dataset.status === "created" ? {} : this._populateRowData(tr));
+    const nonEmptyRows = payloadRows.filter((row) => row.device_id || row.device_bay_id);
+    if (!nonEmptyRows.length) {
+      this._setSummaryFor(this.populateSummary, "No bay rows to populate.", "text-danger");
+      return;
+    }
+
+    this._setBusyFor("iff-bulk-populate-bays", true);
+    rows.forEach((tr) => {
+      if (tr.dataset.status === "created") return;
+      const row = this._populateRowData(tr);
+      this._setRowStatus(tr, row.device_id || row.device_bay_id ? "pending" : "draft", row.device_id || row.device_bay_id ? "Pending" : "Ready");
+    });
+
+    try {
+      const response = await fetch(this.config.bulkPopulateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": this.config.csrf,
+        },
+        body: JSON.stringify({ rows: payloadRows }),
+      });
+      const result = await response.json();
+      this._applyPopulateResults(result.results || []);
+      if (response.ok) {
+        this._setSummaryFor(this.populateSummary, `Populated ${result.populated || 0} device bay(s).`, "text-success");
+        this._addPopulateRowIfNeeded();
+      } else {
+        this._setSummaryFor(this.populateSummary, "Fix the highlighted bay rows and try again.", "text-danger");
+      }
+    } catch (error) {
+      this._setSummaryFor(this.populateSummary, error.message || "Bay populate failed.", "text-danger");
+    } finally {
+      this._setBusyFor("iff-bulk-populate-bays", false);
+      await this._loadOptions();
+      this._refreshAllBaySelects();
+    }
+  }
+
   _rowData(tr) {
     const data = {};
     TABLE_FIELDS.forEach((field) => {
@@ -254,17 +523,54 @@ class ImportManagerApp {
     return data;
   }
 
+  _childRowData(tr) {
+    const data = this._rowData(tr);
+    const parentOpt = tr.querySelector('[data-field="parent"]')?.selectedOptions?.[0];
+    const bayOpt = tr.querySelector('[data-field="device_bay"]')?.selectedOptions?.[0];
+    data.parent = parentOpt?.value || "";
+    data.device_bay = bayOpt?.dataset?.name || bayOpt?.value || "";
+    if (parentOpt) {
+      if (!data.site && parentOpt.dataset.site) data.site = parentOpt.dataset.site;
+      if (!data.rack && parentOpt.dataset.rack) data.rack = parentOpt.dataset.rack;
+    }
+    return data;
+  }
+
+  _populateRowData(tr) {
+    return {
+      device_id: this._selectedId(tr, "device"),
+      device_bay_id: this._selectedId(tr, "device_bay"),
+    };
+  }
+
   _hasData(row) {
     return Object.values(row).some((value) => value);
   }
 
   _applyResults(results) {
+    this._applyResultsTo(this.tbody, results);
+  }
+
+  _applyResultsTo(tbody, results) {
     results.forEach((result) => {
-      const tr = this.tbody.children[result.row];
+      const tr = tbody.children[result.row];
       if (!tr) return;
       if (result.status === "created") {
         const label = result.url ? `<a href="${this._escape(result.url)}">${this._escape(result.name)}</a>` : this._escape(result.name);
         this._setRowStatus(tr, "created", `Created ${label}`);
+      } else if (result.status === "error") {
+        this._setRowStatus(tr, "error", (result.errors || ["Invalid row"]).map((e) => this._escape(e)).join("<br>"));
+      }
+    });
+  }
+
+  _applyPopulateResults(results) {
+    results.forEach((result) => {
+      const tr = this.populateTbody.children[result.row];
+      if (!tr) return;
+      if (result.status === "populated") {
+        const label = result.device_url ? `<a href="${this._escape(result.device_url)}">${this._escape(result.device_name)}</a>` : this._escape(result.device_name);
+        this._setRowStatus(tr, "created", `Installed ${label}`);
       } else if (result.status === "error") {
         this._setRowStatus(tr, "error", (result.errors || ["Invalid row"]).map((e) => this._escape(e)).join("<br>"));
       }
@@ -293,12 +599,31 @@ class ImportManagerApp {
     if (!last || this._hasData(this._rowData(last))) this._addRow();
   }
 
+  _addChildRowIfNeeded() {
+    const last = this.childTbody.lastElementChild;
+    if (!last || this._hasData(this._childRowData(last))) this._addChildRow();
+  }
+
+  _addPopulateRowIfNeeded() {
+    const last = this.populateTbody.lastElementChild;
+    const row = last ? this._populateRowData(last) : {};
+    if (!last || row.device_id || row.device_bay_id) this._addPopulateRow();
+  }
+
   _focusCell(tr, fieldIndex) {
     tr.querySelectorAll(".iff-cell")[fieldIndex]?.focus();
   }
 
+  _focusRowCell(tr, fieldIndex) {
+    tr.querySelectorAll(".iff-cell")[fieldIndex]?.focus();
+  }
+
   _renumberRows() {
-    [...this.tbody.querySelectorAll("tr")].forEach((tr, index) => {
+    this._renumberTable(this.tbody);
+  }
+
+  _renumberTable(tbody) {
+    [...tbody.querySelectorAll("tr")].forEach((tr, index) => {
       tr.querySelector(".iff-row-number").textContent = index + 1;
     });
   }
@@ -307,9 +632,22 @@ class ImportManagerApp {
     document.getElementById("iff-bulk-create").disabled = isBusy;
   }
 
+  _setBusyFor(id, isBusy) {
+    document.getElementById(id).disabled = isBusy;
+  }
+
   _setSummary(message, className) {
-    this.summary.className = `small ${className}`;
-    this.summary.textContent = message;
+    this._setSummaryFor(this.summary, message, className);
+  }
+
+  _setSummaryFor(element, message, className) {
+    element.className = `small ${className}`;
+    element.textContent = message;
+  }
+
+  _refreshAllBaySelects() {
+    this.childTbody.querySelectorAll("tr").forEach((tr) => this._refreshChildBaySelect(tr, false));
+    this.populateTbody.querySelectorAll("tr").forEach((tr) => this._refreshPopulateSelects(tr, false));
   }
 
   _escape(value) {
