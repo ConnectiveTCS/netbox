@@ -23,6 +23,7 @@ urlpatterns = [
     path('barcode-manager/export/', views.BarcodeCsvExportView.as_view(), name='barcode_csv_export'),
     path('import-manager/', views.ImportManagerView.as_view(), name='import_manager'),
     path('import-manager/options/', views.ImportManagerOptionsView.as_view(), name='import_manager_options'),
+    path('import-manager/rack-u-availability/', views.RackUAvailabilityView.as_view(), name='rack_u_availability'),
     path('import-manager/devices/bulk-create/', views.DeviceBulkCreateView.as_view(), name='device_bulk_create'),
     path('import-manager/device-bays/bulk-populate/', views.DeviceBayBulkPopulateView.as_view(), name='device_bay_bulk_populate'),
     path('import-manager/device-template.csv', views.DeviceImportTemplateCsvView.as_view(), name='device_import_template_csv'),

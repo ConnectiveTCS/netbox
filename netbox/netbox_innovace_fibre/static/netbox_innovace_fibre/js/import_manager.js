@@ -39,10 +39,21 @@ class ImportManagerApp {
     this.config = config;
     this.tbody = document.getElementById("iff-device-rows");
     this.childTbody = document.getElementById("iff-child-device-rows");
+    this.rackUTbody = document.getElementById("iff-rack-u-rows");
     this.populateTbody = document.getElementById("iff-bay-populate-rows");
     this.summary = document.getElementById("iff-import-summary");
     this.childSummary = document.getElementById("iff-child-import-summary");
+    this.rackUSummary = document.getElementById("iff-rack-u-summary");
     this.populateSummary = document.getElementById("iff-populate-summary");
+    this.rackUControls = {
+      site: document.getElementById("iff-rack-u-site"),
+      racks: document.getElementById("iff-rack-u-racks"),
+      faces: document.getElementById("iff-rack-u-faces"),
+      role: document.getElementById("iff-rack-u-role"),
+      status: document.getElementById("iff-rack-u-status"),
+      manufacturer: document.getElementById("iff-rack-u-manufacturer"),
+      deviceType: document.getElementById("iff-rack-u-device-type"),
+    };
     this.options = {
       roles: [],
       manufacturers: [],
@@ -63,6 +74,7 @@ class ImportManagerApp {
   async _init() {
     this._bindToolbar();
     await this._loadOptions();
+    this._hydrateRackUControls();
     for (let i = 0; i < 5; i += 1) this._addRow();
     for (let i = 0; i < 3; i += 1) this._addChildRow();
     for (let i = 0; i < 3; i += 1) this._addPopulateRow();
@@ -81,11 +93,19 @@ class ImportManagerApp {
       this._focusRowCell(row, 0);
     });
     document.getElementById("iff-bulk-create-children").addEventListener("click", () => this._bulkCreateChildren());
+    document.getElementById("iff-generate-rack-u").addEventListener("click", () => this._generateRackURows());
+    document.getElementById("iff-add-rack-u-row").addEventListener("click", () => {
+      const row = this._addRackURow();
+      this._focusRowCell(row, 0);
+    });
+    document.getElementById("iff-bulk-create-rack-u").addEventListener("click", () => this._bulkCreateRackU());
     document.getElementById("iff-add-populate-row").addEventListener("click", () => {
       const row = this._addPopulateRow();
       this._focusRowCell(row, 0);
     });
     document.getElementById("iff-bulk-populate-bays").addEventListener("click", () => this._bulkPopulateBays());
+    this.rackUControls.site.addEventListener("change", () => this._refreshRackURackOptions());
+    this.rackUControls.manufacturer.addEventListener("change", () => this._refreshRackUDeviceTypes());
   }
 
   async _loadOptions(params = {}) {
@@ -98,27 +118,24 @@ class ImportManagerApp {
     this.options = await response.json();
   }
 
-  _addRow(values = {}) {
+  _addRow(values = {}, after = null) {
     const tr = document.createElement("tr");
     tr.dataset.status = "draft";
     tr.innerHTML = `
       <td class="text-muted iff-row-number"></td>
       ${TABLE_FIELDS.map((field) => `<td class="iff-col-${field}">${this._fieldHtml(field, values[field] || "")}</td>`).join("")}
       <td class="iff-row-status text-muted">Ready</td>
-      <td class="text-end">
-        <button class="btn btn-sm btn-outline-danger iff-delete-row" type="button" title="Remove row">
-          <i class="mdi mdi-close"></i>
-        </button>
-      </td>
+      <td class="text-end">${this._rowActionsHtml()}</td>
     `;
-    this.tbody.appendChild(tr);
+    this._insertRow(this.tbody, tr, after);
     this._hydrateSelects(tr);
+    this._applyRowValues(tr, values);
     this._bindRow(tr);
     this._renumberRows();
     return tr;
   }
 
-  _addChildRow(values = {}) {
+  _addChildRow(values = {}, after = null) {
     const tr = document.createElement("tr");
     tr.dataset.status = "draft";
     tr.innerHTML = `
@@ -127,20 +144,34 @@ class ImportManagerApp {
       <td><select class="form-select form-select-sm no-ts iff-cell" data-field="device_bay" required></select></td>
       ${TABLE_FIELDS.map((field) => `<td class="iff-col-${field}">${this._fieldHtml(field, values[field] || "")}</td>`).join("")}
       <td class="iff-row-status text-muted">Ready</td>
-      <td class="text-end">
-        <button class="btn btn-sm btn-outline-danger iff-delete-row" type="button" title="Remove row">
-          <i class="mdi mdi-close"></i>
-        </button>
-      </td>
+      <td class="text-end">${this._rowActionsHtml()}</td>
     `;
-    this.childTbody.appendChild(tr);
+    this._insertRow(this.childTbody, tr, after);
     this._hydrateChildSelects(tr);
+    this._applyRowValues(tr, values);
     this._bindChildRow(tr);
     this._renumberTable(this.childTbody);
     return tr;
   }
 
-  _addPopulateRow() {
+  _addRackURow(values = {}, after = null) {
+    const tr = document.createElement("tr");
+    tr.dataset.status = "draft";
+    tr.innerHTML = `
+      <td class="text-muted iff-row-number"></td>
+      ${TABLE_FIELDS.map((field) => `<td class="iff-col-${field}">${this._fieldHtml(field, values[field] || "")}</td>`).join("")}
+      <td class="iff-row-status text-muted">Ready</td>
+      <td class="text-end">${this._rowActionsHtml()}</td>
+    `;
+    this._insertRow(this.rackUTbody, tr, after);
+    this._hydrateSelects(tr);
+    this._applyRowValues(tr, values);
+    this._bindRackURow(tr);
+    this._renumberTable(this.rackUTbody);
+    return tr;
+  }
+
+  _addPopulateRow(values = {}, after = null) {
     const tr = document.createElement("tr");
     tr.dataset.status = "draft";
     tr.innerHTML = `
@@ -149,17 +180,33 @@ class ImportManagerApp {
       <td><select class="form-select form-select-sm no-ts iff-cell" data-field="device_bay" required></select></td>
       <td><select class="form-select form-select-sm no-ts iff-cell" data-field="device" required></select></td>
       <td class="iff-row-status text-muted">Ready</td>
-      <td class="text-end">
-        <button class="btn btn-sm btn-outline-danger iff-delete-row" type="button" title="Remove row">
-          <i class="mdi mdi-close"></i>
-        </button>
-      </td>
+      <td class="text-end">${this._rowActionsHtml()}</td>
     `;
-    this.populateTbody.appendChild(tr);
+    this._insertRow(this.populateTbody, tr, after);
     this._hydratePopulateSelects(tr);
+    this._applyRowValues(tr, values);
     this._bindPopulateRow(tr);
     this._renumberTable(this.populateTbody);
     return tr;
+  }
+
+  _rowActionsHtml() {
+    return `
+      <button class="btn btn-sm btn-outline-secondary iff-clone-row" type="button" title="Duplicate row">
+        <i class="mdi mdi-content-copy"></i>
+      </button>
+      <button class="btn btn-sm btn-outline-danger iff-delete-row" type="button" title="Remove row">
+        <i class="mdi mdi-close"></i>
+      </button>
+    `;
+  }
+
+  _insertRow(tbody, tr, after = null) {
+    if (after?.parentElement === tbody) {
+      after.insertAdjacentElement("afterend", tr);
+    } else {
+      tbody.appendChild(tr);
+    }
   }
 
   _fieldHtml(field, value) {
@@ -172,6 +219,9 @@ class ImportManagerApp {
   }
 
   _bindRow(tr) {
+    tr.querySelector(".iff-clone-row").addEventListener("click", () => {
+      this._cloneRow(tr, "device");
+    });
     tr.querySelector(".iff-delete-row").addEventListener("click", () => {
       tr.remove();
       if (!this.tbody.children.length) this._addRow();
@@ -186,6 +236,9 @@ class ImportManagerApp {
   }
 
   _bindChildRow(tr) {
+    tr.querySelector(".iff-clone-row").addEventListener("click", () => {
+      this._cloneRow(tr, "child");
+    });
     tr.querySelector(".iff-delete-row").addEventListener("click", () => {
       tr.remove();
       if (!this.childTbody.children.length) this._addChildRow();
@@ -199,7 +252,26 @@ class ImportManagerApp {
     });
   }
 
+  _bindRackURow(tr) {
+    tr.querySelector(".iff-clone-row").addEventListener("click", () => {
+      this._cloneRow(tr, "rack-u");
+    });
+    tr.querySelector(".iff-delete-row").addEventListener("click", () => {
+      tr.remove();
+      this._renumberTable(this.rackUTbody);
+    });
+
+    tr.querySelectorAll(".iff-cell").forEach((cell) => {
+      cell.addEventListener("keydown", (event) => this._handleKeydown(event));
+      cell.addEventListener("change", () => this._handleDependencies(tr, cell.dataset.field));
+      cell.addEventListener("input", () => this._markDraft(tr));
+    });
+  }
+
   _bindPopulateRow(tr) {
+    tr.querySelector(".iff-clone-row").addEventListener("click", () => {
+      this._cloneRow(tr, "populate");
+    });
     tr.querySelector(".iff-delete-row").addEventListener("click", () => {
       tr.remove();
       if (!this.populateTbody.children.length) this._addPopulateRow();
@@ -234,7 +306,39 @@ class ImportManagerApp {
     this._refreshPopulateSelects(tr, false);
   }
 
+  _hydrateRackUControls() {
+    this._setSelectOptions(this.rackUControls.site, this.options.sites);
+    this._setSelectOptions(this.rackUControls.role, this.options.roles);
+    this._setSelectOptions(this.rackUControls.status, this.options.statuses, "active");
+    this._setSelectOptions(this.rackUControls.manufacturer, this.options.manufacturers);
+    this._refreshRackURackOptions();
+    this._refreshRackUDeviceTypes();
+  }
+
+  _refreshRackURackOptions() {
+    const siteId = this.rackUControls.site.selectedOptions?.[0]?.dataset?.id || "";
+    const selected = new Set([...this.rackUControls.racks.selectedOptions].map((option) => option.value));
+    const racks = this.options.racks.filter((option) => !siteId || String(option.site_id) === String(siteId));
+    this._setSelectOptions(this.rackUControls.racks, racks);
+    [...this.rackUControls.racks.options].forEach((option) => {
+      option.selected = selected.has(option.value);
+    });
+  }
+
+  _refreshRackUDeviceTypes() {
+    const manufacturerId = this.rackUControls.manufacturer.selectedOptions?.[0]?.dataset?.id || "";
+    const current = this.rackUControls.deviceType.value;
+    const deviceTypes = this.options.device_types.filter((option) => {
+      return !manufacturerId || String(option.manufacturer_id) === String(manufacturerId);
+    });
+    this._setSelectOptions(this.rackUControls.deviceType, deviceTypes);
+    if ([...this.rackUControls.deviceType.options].some((option) => option.value === current)) {
+      this.rackUControls.deviceType.value = current;
+    }
+  }
+
   _setSelectOptions(select, options, defaultValue = "") {
+    if (!select) return;
     const current = select.value || defaultValue;
     select.innerHTML = '<option value=""></option>';
     options.forEach((option) => {
@@ -253,6 +357,27 @@ class ImportManagerApp {
       select.appendChild(opt);
     });
     if ([...select.options].some((option) => option.value === current)) select.value = current;
+  }
+
+  _applyRowValues(tr, values = {}) {
+    Object.entries(values).forEach(([field, value]) => {
+      const cell = tr.querySelector(`[data-field="${field}"]`);
+      if (!cell) return;
+      if (cell.tagName === "SELECT") {
+        if (![...cell.options].some((option) => option.value === String(value))) {
+          return;
+        }
+      }
+      cell.value = value ?? "";
+    });
+    this._refreshDependentSelects(tr);
+    ["device_type", "location", "rack"].forEach((field) => {
+      const cell = tr.querySelector(`[data-field="${field}"]`);
+      const value = values[field];
+      if (cell && value && [...cell.options].some((option) => option.value === String(value))) {
+        cell.value = value;
+      }
+    });
   }
 
   _handleDependencies(tr, field) {
@@ -380,6 +505,7 @@ class ImportManagerApp {
     let next = cells[index + 1];
     if (!next) {
       if (tbody === this.childTbody) next = this._addChildRow().querySelector(".iff-cell");
+      else if (tbody === this.rackUTbody) next = this._addRackURow().querySelector(".iff-cell");
       else if (tbody === this.populateTbody) next = this._addPopulateRow().querySelector(".iff-cell");
       else next = this._addRow().querySelector(".iff-cell");
     }
@@ -473,6 +599,88 @@ class ImportManagerApp {
     }
   }
 
+  async _generateRackURows() {
+    const siteId = this.rackUControls.site.selectedOptions?.[0]?.dataset?.id || "";
+    const rackIds = [...this.rackUControls.racks.selectedOptions].map((option) => option.dataset.id).filter(Boolean);
+    const faces = [...this.rackUControls.faces.selectedOptions].map((option) => option.value).filter(Boolean);
+    if (!siteId || !rackIds.length || !faces.length) {
+      this._setSummaryFor(this.rackUSummary, "Select a site, at least one rack, and at least one face.", "text-danger");
+      return;
+    }
+
+    this._setBusyFor("iff-generate-rack-u", true);
+    try {
+      const response = await fetch(this.config.rackUAvailabilityUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": this.config.csrf,
+        },
+        body: JSON.stringify({ site_id: siteId, rack_ids: rackIds, faces }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        this._setSummaryFor(this.rackUSummary, result.error || "Could not generate rack U rows.", "text-danger");
+        return;
+      }
+
+      const defaults = this._rackUDefaults();
+      (result.rows || []).forEach((row) => {
+        this._addRackURow({
+          ...defaults,
+          site: row.site || "",
+          location: row.location || "",
+          rack: row.rack || "",
+          position: row.position || "",
+          face: row.face || "",
+        });
+      });
+      this._setSummaryFor(this.rackUSummary, `Generated ${result.count || 0} rack U row(s).`, "text-success");
+    } catch (error) {
+      this._setSummaryFor(this.rackUSummary, error.message || "Could not generate rack U rows.", "text-danger");
+    } finally {
+      this._setBusyFor("iff-generate-rack-u", false);
+    }
+  }
+
+  async _bulkCreateRackU() {
+    const rows = [...this.rackUTbody.querySelectorAll("tr")];
+    const payloadRows = rows.map((tr) => tr.dataset.status === "created" ? {} : this._rowData(tr));
+    const nonEmptyRows = payloadRows.filter((row) => this._hasData(row));
+    if (!nonEmptyRows.length) {
+      this._setSummaryFor(this.rackUSummary, "No rack U rows to create.", "text-danger");
+      return;
+    }
+
+    this._setBusyFor("iff-bulk-create-rack-u", true);
+    rows.forEach((tr) => {
+      if (tr.dataset.status === "created") return;
+      this._setRowStatus(tr, this._hasData(this._rowData(tr)) ? "pending" : "draft", this._hasData(this._rowData(tr)) ? "Pending" : "Ready");
+    });
+
+    try {
+      const response = await fetch(this.config.bulkCreateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": this.config.csrf,
+        },
+        body: JSON.stringify({ rows: payloadRows }),
+      });
+      const result = await response.json();
+      this._applyResultsTo(this.rackUTbody, result.results || []);
+      if (response.ok) {
+        this._setSummaryFor(this.rackUSummary, `Created ${result.created || 0} device(s) from rack U rows.`, "text-success");
+      } else {
+        this._setSummaryFor(this.rackUSummary, "Fix the highlighted rack U rows and try again.", "text-danger");
+      }
+    } catch (error) {
+      this._setSummaryFor(this.rackUSummary, error.message || "Rack U bulk create failed.", "text-danger");
+    } finally {
+      this._setBusyFor("iff-bulk-create-rack-u", false);
+    }
+  }
+
   async _bulkPopulateBays() {
     const rows = [...this.populateTbody.querySelectorAll("tr")];
     const payloadRows = rows.map((tr) => tr.dataset.status === "created" ? {} : this._populateRowData(tr));
@@ -538,9 +746,47 @@ class ImportManagerApp {
 
   _populateRowData(tr) {
     return {
+      parent: tr.querySelector('[data-field="parent"]')?.value || "",
       device_id: this._selectedId(tr, "device"),
+      device: tr.querySelector('[data-field="device"]')?.value || "",
       device_bay_id: this._selectedId(tr, "device_bay"),
+      device_bay: tr.querySelector('[data-field="device_bay"]')?.value || "",
     };
+  }
+
+  _rackUDefaults() {
+    return {
+      role: this.rackUControls.role.value || "",
+      status: this.rackUControls.status.value || "active",
+      manufacturer: this.rackUControls.manufacturer.value || "",
+      device_type: this.rackUControls.deviceType.value || "",
+    };
+  }
+
+  _editableValues(tr) {
+    const values = {};
+    tr.querySelectorAll(".iff-cell").forEach((cell) => {
+      values[cell.dataset.field] = cell.value || "";
+    });
+    return values;
+  }
+
+  _cloneRow(tr, kind) {
+    const values = this._editableValues(tr);
+    let clone;
+    if (kind === "child") {
+      clone = this._addChildRow(values, tr);
+      this._refreshChildBaySelect(clone, false);
+    } else if (kind === "rack-u") {
+      clone = this._addRackURow(values, tr);
+    } else if (kind === "populate") {
+      clone = this._addPopulateRow(values, tr);
+      this._refreshPopulateSelects(clone, false);
+    } else {
+      clone = this._addRow(values, tr);
+    }
+    this._setRowStatus(clone, "draft", "Ready");
+    this._focusRowCell(clone, 0);
   }
 
   _hasData(row) {

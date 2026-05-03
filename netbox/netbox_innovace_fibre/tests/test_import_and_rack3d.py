@@ -4,7 +4,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from dcim.choices import DeviceStatusChoices, SubdeviceRoleChoices
-from dcim.models import Device, DeviceBay, DeviceRole, DeviceType, Manufacturer, Rack, Site
+from dcim.models import Device, DeviceBay, DeviceRole, DeviceType, Manufacturer, Rack, RackReservation, Site
 from users.models import User
 
 
@@ -139,6 +139,45 @@ class InnovaceImportAndRack3DTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         bay.refresh_from_db()
         self.assertEqual(bay.installed_device.name, 'created-child')
+
+    def test_rack_u_availability_excludes_occupied_and_reserved_whole_u_positions(self):
+        Device.objects.create(
+            name='front-device',
+            device_type=self.shelf_type,
+            role=self.role,
+            site=self.site,
+            rack=self.rack,
+            position=1,
+            face='front',
+            status=DeviceStatusChoices.STATUS_ACTIVE,
+        )
+        user = User.objects.create_user(username='availability-user', password='password', is_staff=True, is_superuser=True)
+        RackReservation.objects.create(
+            rack=self.rack,
+            units=[3],
+            user=user,
+            description='Reserved space',
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse('plugins:netbox_innovace_fibre:rack_u_availability'),
+            data=json.dumps({
+                'site_id': self.site.pk,
+                'rack_ids': [self.rack.pk],
+                'faces': ['front', 'rear'],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()['rows']
+        front_positions = {row['position'] for row in rows if row['face'] == 'front'}
+        rear_positions = {row['position'] for row in rows if row['face'] == 'rear'}
+        self.assertNotIn('1', front_positions)
+        self.assertIn('1', rear_positions)
+        self.assertNotIn('3', front_positions)
+        self.assertNotIn('3', rear_positions)
 
     def test_import_manager_populates_existing_child_device_into_bay(self):
         parent = Device.objects.create(

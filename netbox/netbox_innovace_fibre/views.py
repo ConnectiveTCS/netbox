@@ -1,4 +1,5 @@
 import csv
+import decimal
 import io
 import json
 
@@ -102,6 +103,20 @@ def _device_bay_option(bay):
         'rack': rack.name if rack else '',
         'occupied': bool(bay.installed_device_id),
     }
+
+
+def _decimal_unit(value):
+    try:
+        return decimal.Decimal(str(value))
+    except (decimal.InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _unit_label(value):
+    unit = _decimal_unit(value)
+    if unit is None:
+        return ''
+    return str(int(unit)) if unit == unit.to_integral_value() else str(unit)
 
 
 def _safe_image_url(image_field):
@@ -564,6 +579,65 @@ class ImportManagerOptionsView(LoginRequiredMixin, View):
                 for device in existing_child_devices[:1000]
             ],
         })
+
+
+class RackUAvailabilityView(LoginRequiredMixin, View):
+    def post(self, request):
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+
+        site_id = payload.get('site_id')
+        rack_ids = payload.get('rack_ids') or []
+        faces = payload.get('faces') or []
+
+        if not site_id:
+            return JsonResponse({'error': 'site_id is required'}, status=400)
+        if not isinstance(rack_ids, list) or not rack_ids:
+            return JsonResponse({'error': 'rack_ids must be a non-empty list'}, status=400)
+        if not isinstance(faces, list) or not faces:
+            return JsonResponse({'error': 'faces must be a non-empty list'}, status=400)
+
+        valid_faces = {DeviceFaceChoices.FACE_FRONT, DeviceFaceChoices.FACE_REAR}
+        faces = [face for face in faces if face in valid_faces]
+        if not faces:
+            return JsonResponse({'error': 'Select at least one valid rack face'}, status=400)
+
+        racks = (
+            Rack.objects
+            .select_related('site', 'location')
+            .prefetch_related('reservations')
+            .filter(site_id=site_id, pk__in=rack_ids)
+            .order_by('site__name', 'name')
+        )
+
+        rows = []
+        for rack in racks:
+            reserved_units = {
+                unit
+                for unit in (_decimal_unit(unit) for unit in rack.get_reserved_units().keys())
+                if unit is not None
+            }
+            for face in faces:
+                available_units = rack.get_available_units(u_height=1.0, rack_face=face)
+                for unit in sorted(available_units, reverse=True):
+                    unit = _decimal_unit(unit)
+                    if unit is None or unit != unit.to_integral_value() or unit in reserved_units:
+                        continue
+                    rows.append({
+                        'site': rack.site.name if rack.site_id else '',
+                        'site_id': rack.site_id,
+                        'location': rack.location.name if rack.location_id else '',
+                        'location_id': rack.location_id,
+                        'rack': rack.name,
+                        'rack_id': rack.pk,
+                        'rack_label': f'{rack.site.name} / {rack.name}' if rack.site_id else rack.name,
+                        'position': _unit_label(unit),
+                        'face': face,
+                    })
+
+        return JsonResponse({'rows': rows, 'count': len(rows)})
 
 
 class DeviceBulkCreateView(LoginRequiredMixin, View):

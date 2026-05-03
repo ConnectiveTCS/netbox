@@ -55,8 +55,8 @@ Move completed tasks here after marking them `[x]` and setting `status: done`.
   - notes:
     - Keep device body structures of the selected one and slightly increase transparency for the ones not selected.
 
-- [ ] TASK-004: Add rows of each unoccupied u position for selected racks
-  - status: todo
+- [x] TASK-004: Add rows of each unoccupied u position for selected racks
+  - status: done
   - priority: medium
   - owner: unassigned
   - area: general

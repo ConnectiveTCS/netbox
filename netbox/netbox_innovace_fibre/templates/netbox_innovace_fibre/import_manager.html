@@ -18,12 +18,17 @@
     min-width: 1500px;
   }
 
+  #iff-rack-u-table {
+    min-width: 1500px;
+  }
+
   #iff-bay-populate-table {
     min-width: 900px;
   }
 
   #iff-device-table th,
   #iff-child-device-table th,
+  #iff-rack-u-table th,
   #iff-bay-populate-table th {
     white-space: nowrap;
     font-size: 12px;
@@ -31,6 +36,7 @@
 
   #iff-device-table td,
   #iff-child-device-table td,
+  #iff-rack-u-table td,
   #iff-bay-populate-table td {
     vertical-align: middle;
     min-width: 120px;
@@ -45,12 +51,15 @@
   #iff-device-table select,
   #iff-child-device-table input,
   #iff-child-device-table select,
+  #iff-rack-u-table input,
+  #iff-rack-u-table select,
   #iff-bay-populate-table select {
     min-width: 100%;
   }
 
   #iff-device-table .iff-row-status,
   #iff-child-device-table .iff-row-status,
+  #iff-rack-u-table .iff-row-status,
   #iff-bay-populate-table .iff-row-status {
     min-width: 180px;
     font-size: 12px;
@@ -58,12 +67,14 @@
 
   #iff-device-table tr.iff-created,
   #iff-child-device-table tr.iff-created,
+  #iff-rack-u-table tr.iff-created,
   #iff-bay-populate-table tr.iff-created {
     --bs-table-bg: var(--bs-success-bg-subtle);
   }
 
   #iff-device-table tr.iff-error,
   #iff-child-device-table tr.iff-error,
+  #iff-rack-u-table tr.iff-error,
   #iff-bay-populate-table tr.iff-error {
     --bs-table-bg: var(--bs-danger-bg-subtle);
   }
@@ -123,7 +134,7 @@
                 <th>{{ field }}</th>
               {% endfor %}
               <th>Status</th>
-              <th style="width: 56px"></th>
+              <th style="width: 88px"></th>
             </tr>
           </thead>
           <tbody id="iff-device-rows"></tbody>
@@ -132,6 +143,84 @@
 
       <div class="small text-muted" id="iff-import-summary">
         Required fields: name, role, manufacturer, device_type, status, site.
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>
+        <i class="mdi mdi-server-network"></i>
+        Rack U Positions
+      </span>
+      <span class="badge text-bg-secondary">Availability</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <label class="form-label small text-muted" for="iff-rack-u-site">Site</label>
+          <select class="form-select form-select-sm no-ts" id="iff-rack-u-site"></select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small text-muted" for="iff-rack-u-racks">Racks</label>
+          <select class="form-select form-select-sm no-ts" id="iff-rack-u-racks" multiple size="5"></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted" for="iff-rack-u-faces">Faces</label>
+          <select class="form-select form-select-sm no-ts" id="iff-rack-u-faces" multiple size="2">
+            <option value="front" selected>Front</option>
+            <option value="rear" selected>Rear</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small text-muted" for="iff-rack-u-role">Role</label>
+          <select class="form-select form-select-sm no-ts" id="iff-rack-u-role"></select>
+          <label class="form-label small text-muted mt-2" for="iff-rack-u-status">Status</label>
+          <select class="form-select form-select-sm no-ts" id="iff-rack-u-status"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small text-muted" for="iff-rack-u-manufacturer">Manufacturer</label>
+          <select class="form-select form-select-sm no-ts" id="iff-rack-u-manufacturer"></select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small text-muted" for="iff-rack-u-device-type">Device type</label>
+          <select class="form-select form-select-sm no-ts" id="iff-rack-u-device-type"></select>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <button class="btn btn-outline-secondary" type="button" id="iff-generate-rack-u">
+          <i class="mdi mdi-table-plus"></i>
+          Generate rows
+        </button>
+        <button class="btn btn-outline-secondary" type="button" id="iff-add-rack-u-row">
+          <i class="mdi mdi-plus"></i>
+          Add row
+        </button>
+        <button class="btn btn-primary" type="button" id="iff-bulk-create-rack-u">
+          <i class="mdi mdi-upload"></i>
+          Bulk Create
+        </button>
+      </div>
+
+      <div class="iff-table-wrap border rounded mb-3">
+        <table class="table table-sm table-hover mb-0 align-middle" id="iff-rack-u-table">
+          <thead>
+            <tr>
+              <th style="width: 44px">#</th>
+              {% for field in device_bulk_create_fields %}
+                <th>{{ field }}</th>
+              {% endfor %}
+              <th>Status</th>
+              <th style="width: 88px"></th>
+            </tr>
+          </thead>
+          <tbody id="iff-rack-u-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="small text-muted" id="iff-rack-u-summary">
+        Generate available whole-U positions for selected racks, then fill unique device details.
       </div>
     </div>
   </div>
@@ -181,7 +270,7 @@
                     <th>{{ field }}</th>
                   {% endfor %}
                   <th>Status</th>
-                  <th style="width: 56px"></th>
+                  <th style="width: 88px"></th>
                 </tr>
               </thead>
               <tbody id="iff-child-device-rows"></tbody>
@@ -212,7 +301,7 @@
                   <th>device_bay</th>
                   <th>existing_device</th>
                   <th>Status</th>
-                  <th style="width: 56px"></th>
+                  <th style="width: 88px"></th>
                 </tr>
               </thead>
               <tbody id="iff-bay-populate-rows"></tbody>
@@ -235,6 +324,7 @@
       return c ? decodeURIComponent(c.split('=').slice(1).join('=')) : '';
     })(),
     optionsUrl: "{% url 'plugins:netbox_innovace_fibre:import_manager_options' %}",
+    rackUAvailabilityUrl: "{% url 'plugins:netbox_innovace_fibre:rack_u_availability' %}",
     bulkCreateUrl: "{% url 'plugins:netbox_innovace_fibre:device_bulk_create' %}",
     bulkPopulateUrl: "{% url 'plugins:netbox_innovace_fibre:device_bay_bulk_populate' %}"
   };
